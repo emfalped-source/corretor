@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Corretor EMFAL</title>
+<meta name="theme-color" content="#1f5f4a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-192.png">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+:root{--verde:#1f5f4a;--verde2:#2c7a60;--claro:#e7f0ec;--fundo:#f5f4ef;--card:#fff;--txt:#1d2421;--sub:#5d6a64;--linha:#dcdfd9;--ok:#1e8a4c;--okf:#e3f4ea;--err:#c0392b;--errf:#fbe7e4;--al:#b7791f;--alf:#fdf3dc;--barra:#1f5f4a;--sobre:#fff;--th:#D9D9D9;--veu:rgba(245,244,239,.8)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--verde:#7cc8a8;--verde2:#5fb391;--claro:#1f3a31;--fundo:#121816;--card:#1a2220;--txt:#e6ece9;--sub:#9aa9a2;--linha:#2d3834;--ok:#6fd39a;--okf:#173326;--err:#f08b7e;--errf:#3a1d19;--al:#e8b45a;--alf:#3a2e15;--barra:#173f32;--sobre:#e6ece9;--th:#2d3834;--veu:rgba(18,24,22,.8);color-scheme:dark}}
+:root[data-theme="dark"]{--verde:#7cc8a8;--verde2:#5fb391;--claro:#1f3a31;--fundo:#121816;--card:#1a2220;--txt:#e6ece9;--sub:#9aa9a2;--linha:#2d3834;--ok:#6fd39a;--okf:#173326;--err:#f08b7e;--errf:#3a1d19;--al:#e8b45a;--alf:#3a2e15;--barra:#173f32;--sobre:#e6ece9;--th:#2d3834;--veu:rgba(18,24,22,.8);color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--fundo);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px}
+header{background:var(--barra);color:var(--sobre);padding:14px 16px 12px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+header h1{margin:0;font-size:19px;letter-spacing:.2px}
+header small{opacity:.85;font-size:13px}
+main{padding:14px 16px 96px;max-width:760px;margin:0 auto}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);padding-bottom:env(safe-area-inset-bottom,0px);border-top:1px solid var(--linha);display:flex;z-index:6}
+nav button{flex:1;border:0;background:none;padding:9px 2px 11px;font-size:12px;color:var(--sub);display:flex;flex-direction:column;align-items:center;gap:3px}
+nav button svg{width:22px;height:22px}
+nav button.on{color:var(--verde);font-weight:600}
+h2{font-size:18px;margin:4px 0 12px}
+h3{font-size:15px;margin:16px 0 8px}
+.card{background:var(--card);border:1px solid var(--linha);border-radius:12px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
+input,select,textarea{width:100%;font:inherit;padding:10px;border:1px solid var(--linha);border-radius:8px;background:var(--card);color:var(--txt)}
+textarea{min-height:150px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:600;background:var(--verde);color:var(--card);cursor:pointer}
+.btn.sec{background:var(--claro);color:var(--verde)}
+.btn.perigo{background:var(--errf);color:var(--err)}
+.btn.peq{padding:7px 11px;font-size:14px}
+.btn.larga{width:100%}
+.btn:disabled{opacity:.5}
+.linha{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.linha>*{flex:1}
+.sub{color:var(--sub);font-size:14px}
+.chip{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;background:var(--claro);color:var(--verde)}
+.chip.ok{background:var(--okf);color:var(--ok)}.chip.err{background:var(--errf);color:var(--err)}.chip.al{background:var(--alf);color:var(--al)}
+.lista .it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--linha)}
+.lista .it:last-child{border-bottom:0}
+.gab{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.gq{display:flex;align-items:center;gap:4px;font-size:13px}
+.gq b{width:24px;text-align:right}
+.gq button{width:24px;height:26px;border:1px solid var(--linha);border-radius:6px;background:var(--card);color:var(--txt);font-size:12px;padding:0}
+.gq button.on{background:var(--verde);color:var(--card);border-color:var(--verde)}
+.gq button.anu.on{background:var(--al);border-color:var(--al)}
+.resp{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:5px;margin-top:10px}
+.resp div{border-radius:7px;padding:3px 4px;font-size:12px;border:1px solid var(--linha);background:var(--card)}
+.resp div.ok{background:var(--okf);border-color:var(--okf)}.resp div.err{background:var(--errf);border-color:var(--errf)}.resp div.al{outline:2px solid var(--al)}
+.resp select{padding:2px;font-size:13px;border:0;background:transparent;width:100%;color:var(--txt)}
+.thumb{width:64px;height:84px;object-fit:cover;border-radius:6px;border:1px solid var(--linha);flex:none}
+.nota{font-size:24px;font-weight:700;color:var(--verde)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:var(--th);text-align:left;padding:7px;font-size:13px}
+td{padding:7px;border-bottom:1px solid var(--linha)}
+td.n{text-align:right;white-space:nowrap}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 12px}
+.stats div{background:var(--claro);border-radius:10px;padding:8px;text-align:center}
+.stats b{display:block;font-size:20px;color:var(--verde)}
+.stats span{font-size:12px;color:var(--sub)}
+.vazio{text-align:center;color:var(--sub);padding:28px 10px}
+#carga{position:fixed;inset:0;background:var(--veu);display:none;align-items:center;justify-content:center;z-index:20;flex-direction:column;gap:10px;font-weight:600;color:var(--verde)}
+#carga.on{display:flex}
+.giro{width:34px;height:34px;border:4px solid var(--claro);border-top-color:var(--verde);border-radius:50%;animation:g 1s linear infinite}
+@keyframes g{to{transform:rotate(360deg)}}
+#aviso{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--txt);color:var(--fundo);padding:12px 14px;border-radius:10px;z-index:21;display:none;font-size:14px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}
+.modal .card{max-width:420px;width:100%}
+.demo{background:var(--alf);color:var(--al);font-size:13px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;left:-9999px}
+label.btn{display:flex;margin:0;font-size:16px;color:var(--card)}
+label.btn.sec{color:var(--verde)}
+.chk{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:15px}
+.chk input{width:auto}
+.topo{display:flex;justify-content:space-between;align-items:center;gap:10px}
+#conta{display:flex;gap:6px;flex:none}
+#conta button{border:1px solid rgba(255,255,255,.45);background:transparent;color:var(--sobre);border-radius:8px;padding:6px 9px;font:inherit;font-size:13px;cursor:pointer}
+.entrada{max-width:420px;margin:24px auto 0}
+.entrada h2{margin-top:0}
+.erro{background:var(--errf);color:var(--err);border-radius:8px;padding:9px 11px;font-size:14px;margin-top:10px}
+body.semnav nav{display:none}
+body.semnav main{padding-bottom:24px}
+</style>
+</head>
+<body>
+<header><div class="topo"><div><h1>Corretor EMFAL</h1><small id="quem"></small></div><div id="conta"></div></div></header>
+<main id="tela"></main>
+<nav id="nav"></nav>
+<div id="carga"><div class="giro"></div><div id="cargaMsg">Carregando...</div></div>
+<div id="aviso"></div>
+<input type="file" id="fotoCam" accept="image/*" capture="environment">
+<input type="file" id="fotoGal" accept="image/*" multiple>
+
+<script>
+/* Núcleo do Corretor EMFAL: layout da folha, geração do PDF e leitura da foto.
+   Funciona no navegador (window.OMR) e no Node (module.exports) para testes. */
+(function (root) {
+  'use strict';
+
+  // ===== Layout da folha (milímetros, A4 retrato) =====
+  var L = {
+    W: 210, H: 297,
+    mk: { s: 9, c: [[14, 14], [196, 14], [196, 283], [14, 283]] }, // TL, TR, BR, BL
+    rows: 25, colX0: 24, colW: 43, rowY0: 100, rowH: 7.0, numW: 9, gap: 6.6, r: 2.5,
+    qr: { x: 160, y: 21, s: 28 },
+    maxQ: 100
+  };
+  var LETRAS = 'ABCDE';
+
+  function bolinha(q, a) {
+    var col = Math.floor(q / L.rows), row = q % L.rows;
+    return [L.colX0 + col * L.colW + L.numW + L.r + a * L.gap, L.rowY0 + row * L.rowH];
+  }
+
+  // ===== Geração do PDF das folhas =====
+  // prova: {id,nome,tipo,questoes,alternativas,valor}; estudantes: [{id,nome,turma}]
+  function gerarPDF(prova, estudantes, jsPDF, qrcode) {
+    var doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+    var n = prova.questoes, alt = prova.alternativas;
+    estudantes.forEach(function (e, idx) {
+      if (idx > 0) doc.addPage();
+      doc.setTextColor(0);
+      doc.setDrawColor(0);
+      doc.setFillColor(0);
+      // Marcas de canto
+      L.mk.c.forEach(function (c) { doc.rect(c[0] - L.mk.s / 2, c[1] - L.mk.s / 2, L.mk.s, L.mk.s, 'F'); });
+      // Cabeçalho institucional
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+      ['PREFEITURA MUNICIPAL DE BELO HORIZONTE',
+        'SECRETARIA MUNICIPAL DE EDUCAÇÃO (SMED-BH)',
+        'GERÊNCIA REGIONAL DE EDUCAÇÃO DA PAMPULHA (GERED-PAMPULHA)',
+        'ESCOLA MUNICIPAL FRANCISCA ALVES (EMFAL)'].forEach(function (t, i) { doc.text(t, 24, 24 + i * 3.4); });
+      doc.setFontSize(12); doc.text('FOLHA DE RESPOSTAS', 24, 43);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+      doc.text(cortar(doc, 'Avaliação: ' + prova.nome + ' (' + prova.tipo + ')', 132), 24, 49.5);
+      doc.text('Valor: ' + fmt(prova.valor) + ' pontos    Questões: ' + n + '    Turma: ' + (e.turma || ''), 24, 55);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+      doc.text(cortar(doc, 'Estudante: ' + e.nome, 132), 24, 62);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+      doc.text('Data: ____/____/______', 24, 68.5);
+      doc.setFontSize(8.5);
+      doc.text('Preencha completamente uma única bolinha por questão, com caneta azul ou preta.', 24, 77);
+      doc.text('Não rasure, não dobre e não escreva perto dos quadrados pretos.', 24, 81);
+      doc.setFontSize(7); doc.setTextColor(90);
+      doc.text('Exemplo correto:', 24, 87.5);
+      doc.setTextColor(0);
+      doc.circle(48, 86.7, 1.8, 'F');
+      // QR Code
+      var q = qrcode(0, 'M'); q.addData(codigoQR(prova.id, e.id)); q.make();
+      var m = q.getModuleCount(), ms = L.qr.s / m;
+      for (var r = 0; r < m; r++) for (var c = 0; c < m; c++)
+        if (q.isDark(r, c)) doc.rect(L.qr.x + c * ms, L.qr.y + r * ms, ms + 0.02, ms + 0.02, 'F');
+      // Grade de bolinhas
+      var cols = Math.ceil(n / L.rows);
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+      for (var k = 0; k < cols; k++) for (var a = 0; a < alt; a++) {
+        var p = bolinha(k * L.rows, a); doc.text(LETRAS[a], p[0], L.rowY0 - 5.5, { align: 'center' });
+      }
+      doc.setLineWidth(0.3);
+      for (var i = 0; i < n; i++) {
+        var p0 = bolinha(i, 0);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+        doc.text(String(i + 1), p0[0] - L.r - 1.8, p0[1] + 1.1, { align: 'right' });
+        for (var b = 0; b < alt; b++) { var pb = bolinha(i, b); doc.circle(pb[0], pb[1], L.r, 'S'); }
+      }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
+      doc.text('Corretor EMFAL  |  ' + prova.id + '  |  ' + e.id, 105, 290, { align: 'center' });
+    });
+    return doc;
+  }
+  function cortar(doc, t, w) { while (t.length > 4 && doc.getTextWidth(t) > w) t = t.slice(0, -2); return t; }
+  function fmt(v) { return String(Math.round(v * 100) / 100).replace('.', ','); }
+  function codigoQR(p, e) { return 'EMFAL;' + p + ';' + e; }
+  function lerCodigo(t) {
+    var s = String(t || '').split(';');
+    return s.length === 3 && s[0] === 'EMFAL' ? { provaId: s[1], estudanteId: s[2] } : null;
+  }
+
+  // ===== Leitura da imagem =====
+  function cinza(d, w, h) {
+    var g = new Uint8Array(w * h);
+    for (var i = 0, j = 0; i < g.length; i++, j += 4) g[i] = (d[j] * 299 + d[j + 1] * 587 + d[j + 2] * 114) / 1000;
+    return g;
+  }
+  // Limiar adaptativo (Bradley): tolera sombra e luz desigual
+  function binarizar(g, w, h) {
+    var I = new Uint32Array((w + 1) * (h + 1)), W1 = w + 1, x, y;
+    for (y = 0; y < h; y++) {
+      var s = 0;
+      for (x = 0; x < w; x++) { s += g[y * w + x]; I[(y + 1) * W1 + x + 1] = I[y * W1 + x + 1] + s; }
+    }
+    var S = Math.max(16, Math.floor(Math.max(w, h) / 8)) >> 1, b = new Uint8Array(w * h);
+    for (y = 0; y < h; y++) {
+      var y1 = Math.max(0, y - S), y2 = Math.min(h - 1, y + S);
+      for (x = 0; x < w; x++) {
+        var x1 = Math.max(0, x - S), x2 = Math.min(w - 1, x + S);
+        var cnt = (x2 - x1 + 1) * (y2 - y1 + 1);
+        var sum = I[(y2 + 1) * W1 + x2 + 1] - I[y1 * W1 + x2 + 1] - I[(y2 + 1) * W1 + x1] + I[y1 * W1 + x1];
+        b[y * w + x] = g[y * w + x] * cnt <= sum * 0.82 ? 1 : 0;
+      }
+    }
+    return b;
+  }
+  function componentes(b, w, h, minArea) {
+    var lab = new Int32Array(w * h), out = [], st = new Int32Array(w * h), id = 0;
+    for (var i = 0; i < b.length; i++) {
+      if (!b[i] || lab[i]) continue;
+      id++; var sp = 0; st[sp++] = i; lab[i] = id;
+      var area = 0, sx = 0, sy = 0, x0 = w, x1 = 0, y0 = h, y1 = 0;
+      while (sp) {
+        var p = st[--sp], px = p % w, py = (p - px) / w;
+        area++; sx += px; sy += py;
+        if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py;
+        if (px > 0 && b[p - 1] && !lab[p - 1]) { lab[p - 1] = id; st[sp++] = p - 1; }
+        if (px < w - 1 && b[p + 1] && !lab[p + 1]) { lab[p + 1] = id; st[sp++] = p + 1; }
+        if (py > 0 && b[p - w] && !lab[p - w]) { lab[p - w] = id; st[sp++] = p - w; }
+        if (py < h - 1 && b[p + w] && !lab[p + w]) { lab[p + w] = id; st[sp++] = p + w; }
+      }
+      if (area >= minArea) out.push({ area: area, cx: sx / area, cy: sy / area, bw: x1 - x0 + 1, bh: y1 - y0 + 1 });
+    }
+    return out;
+  }
+  function areaQuad(p) {
+    var s = 0;
+    for (var i = 0; i < 4; i++) { var a = p[i], b = p[(i + 1) % 4]; s += a.cx * b.cy - b.cx * a.cy; }
+    return Math.abs(s) / 2;
+  }
+  function acharMarcas(b, w, h) {
+    var M = Math.max(w, h), minLado = 0.012 * M;
+    var cand = componentes(b, w, h, minLado * minLado * 0.6).filter(function (c) {
+      var ar = c.bw / c.bh, fill = c.area / (c.bw * c.bh);
+      return ar > 0.6 && ar < 1.67 && fill > 0.55 && c.bw < 0.12 * M && c.bw > minLado;
+    });
+    if (cand.length < 4) return null;
+    var fs = [function (c) { return -(c.cx + c.cy); }, function (c) { return c.cx - c.cy; },
+      function (c) { return c.cx + c.cy; }, function (c) { return c.cy - c.cx; }];
+    var tops = fs.map(function (f) { return cand.slice().sort(function (a, b) { return f(b) - f(a); }).slice(0, 4); });
+    var best = null, bestA = 0;
+    tops[0].forEach(function (a) { tops[1].forEach(function (b) { tops[2].forEach(function (c) { tops[3].forEach(function (d) {
+      var q = [a, b, c, d];
+      if (new Set(q).size < 4) return;
+      var ars = q.map(function (x) { return x.area; });
+      if (Math.max.apply(0, ars) > 3.5 * Math.min.apply(0, ars)) return;
+      var A = areaQuad(q);
+      if (A > bestA) { bestA = A; best = q; }
+    }); }); }); });
+    if (!best || bestA < 0.15 * w * h) return null;
+    return best.map(function (c) { return [c.cx, c.cy]; });
+  }
+  // Homografia (origem -> destino) com 4 pares de pontos
+  function homografia(src, dst) {
+    var A = [], i;
+    for (i = 0; i < 4; i++) {
+      var x = src[i][0], y = src[i][1], u = dst[i][0], v = dst[i][1];
+      A.push([x, y, 1, 0, 0, 0, -u * x, -u * y, u]);
+      A.push([0, 0, 0, x, y, 1, -v * x, -v * y, v]);
+    }
+    for (var c = 0; c < 8; c++) {
+      var piv = c;
+      for (var r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+      var t = A[c]; A[c] = A[piv]; A[piv] = t;
+      if (Math.abs(A[c][c]) < 1e-12) return null;
+      for (r = 0; r < 8; r++) if (r !== c) {
+        var f = A[r][c] / A[c][c];
+        for (var k = c; k < 9; k++) A[r][k] -= f * A[c][k];
+      }
+    }
+    var hh = [];
+    for (i = 0; i < 8; i++) hh.push(A[i][8] / A[i][i]);
+    hh.push(1);
+    return hh;
+  }
+  function aplicar(H, x, y) {
+    var z = H[6] * x + H[7] * y + 1;
+    return [(H[0] * x + H[1] * y + H[2]) / z, (H[3] * x + H[4] * y + H[5]) / z];
+  }
+  function preenchimento(b, w, h, H, xm, ym) {
+    var c = aplicar(H, xm, ym), e = aplicar(H, xm + L.r * 0.55, ym), f = aplicar(H, xm, ym + L.r * 0.55);
+    var rr = (Math.hypot(e[0] - c[0], e[1] - c[1]) + Math.hypot(f[0] - c[0], f[1] - c[1])) / 2;
+    var tot = 0, esc = 0, r2 = rr * rr;
+    for (var y = Math.floor(c[1] - rr); y <= Math.ceil(c[1] + rr); y++)
+      for (var x = Math.floor(c[0] - rr); x <= Math.ceil(c[0] + rr); x++) {
+        if ((x - c[0]) * (x - c[0]) + (y - c[1]) * (y - c[1]) > r2) continue;
+        tot++;
+        if (x >= 0 && y >= 0 && x < w && y < h && b[y * w + x]) esc++;
+      }
+    return tot ? esc / tot : 0;
+  }
+
+  /* Lê uma foto. img = {data (RGBA), width, height}; jsQR = função da biblioteca;
+     buscarProva(provaId) devolve {questoes, alternativas} ou null.
+     Retorna {ok, erro, provaId, estudanteId, respostas:[ 'A'..'E' | '-' branco | '*' dupla ], alertas:[índices]} */
+  function lerFolha(img, jsQR, buscarProva) {
+    var w = img.width, h = img.height;
+    var qr = jsQR(img.data, w, h, { inversionAttempts: 'attemptBoth' });
+    if (!qr) return { ok: false, erro: 'Não encontrei o QR Code. Fotografe a folha inteira, de frente e com boa luz.' };
+    var cod = lerCodigo(qr.data);
+    if (!cod) return { ok: false, erro: 'Este QR Code não é de uma folha do Corretor EMFAL.' };
+    var prova = buscarProva(cod.provaId);
+    if (!prova) return { ok: false, erro: 'A prova desta folha não foi encontrada no sistema (código ' + cod.provaId + ').', provaId: cod.provaId, estudanteId: cod.estudanteId };
+    var b = binarizar(cinza(img.data, w, h), w, h);
+    var marcas = acharMarcas(b, w, h);
+    if (!marcas) return { ok: false, erro: 'Não encontrei os 4 quadrados pretos dos cantos. Fotografe a folha inteira, sobre uma mesa clara.' };
+    var loc = qr.location, qc = [(loc.topLeftCorner.x + loc.bottomRightCorner.x + loc.topRightCorner.x + loc.bottomLeftCorner.x) / 4,
+      (loc.topLeftCorner.y + loc.bottomRightCorner.y + loc.topRightCorner.y + loc.bottomLeftCorner.y) / 4];
+    var H = null, menor = Infinity;
+    for (var k = 0; k < 4; k++) {
+      var dst = [0, 1, 2, 3].map(function (j) { return marcas[(j + k) % 4]; });
+      var Hk = homografia(L.mk.c, dst);
+      if (!Hk) continue;
+      var pq = aplicar(Hk, L.qr.x + L.qr.s / 2, L.qr.y + L.qr.s / 2), d = Math.hypot(pq[0] - qc[0], pq[1] - qc[1]);
+      if (d < menor) { menor = d; H = Hk; }
+    }
+    var escala = Math.hypot(marcas[0][0] - marcas[2][0], marcas[0][1] - marcas[2][1]) / Math.hypot(182, 269);
+    if (!H || menor > 12 * escala) return { ok: false, erro: 'A folha parece dobrada ou muito inclinada. Tente outra foto, de frente.' };
+    var resp = [], alertas = [], niveis = [];
+    for (var q = 0; q < prova.questoes; q++) {
+      var v = [];
+      for (var a = 0; a < prova.alternativas; a++) { var p = bolinha(q, a); v.push(preenchimento(b, w, h, H, p[0], p[1])); }
+      var ord = v.map(function (x, i) { return [x, i]; }).sort(function (x, y) { return y[0] - x[0]; });
+      var t = ord[0][0], s = ord[1][0], r;
+      if (t < 0.3) { r = '-'; if (t >= 0.18) alertas.push(q); }
+      else if (s >= 0.3 && s >= 0.5 * t) { r = '*'; alertas.push(q); }
+      else { r = LETRAS[ord[0][1]]; if (t < 0.42 || s >= 0.2) alertas.push(q); }
+      resp.push(r); niveis.push(v.map(function (x) { return Math.round(x * 100) / 100; }));
+    }
+    return { ok: true, provaId: cod.provaId, estudanteId: cod.estudanteId, respostas: resp, alertas: alertas, niveis: niveis };
+  }
+
+  // gabarito: string; '*' no gabarito = questão anulada (todos ganham o ponto)
+  function corrigir(respostas, gabarito, valor) {
+    var n = gabarito.length, ac = 0;
+    for (var i = 0; i < n; i++) if (gabarito[i] === '*' || respostas[i] === gabarito[i]) ac++;
+    return { acertos: ac, nota: Math.round(ac * valor / n * 100) / 100 };
+  }
+
+  var api = { L: L, LETRAS: LETRAS, bolinha: bolinha, gerarPDF: gerarPDF, lerFolha: lerFolha, corrigir: corrigir, codigoQR: codigoQR, lerCodigo: lerCodigo };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.OMR = api;
+})(this);
+
+</script>
+<script>
+'use strict';
+var TIPOS = ['Prova parcial', 'Prova mensal', 'Prova trimestral', 'Simulado', 'Outra avaliação'];
+var D = { estudantes: [], provas: [], resultados: [], planilha: '' };
+var aba = 'corrigir', fila = [], seq = 0, rascunho = null, filtroNotas = { prova: '', turma: '' }, folhasSel = { prova: '', turma: '' };
+// Servidor: dentro do Google usa google.script.run; publicado fora (GitHub Pages) conversa com o Apps Script por fetch.
+var API_URL = 'https://script.google.com/macros/s/AKfycbzCbPfrmF1AZhXP2xh0Se-mMQUJlWqbTkCZ8doxeNOsn5XHBE-2YMW-M6T4_R3BtBrF/exec';
+var VIA_GAS = !!(window.google && google.script && google.script.run);
+var DEMO_MODE = !VIA_GAS && /[?&]demo=1/.test(location.search);
+
+// ---------- utilidades ----------
+function $(s) { return document.querySelector(s); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function num(v) { return String(Math.round(v * 100) / 100).replace('.', ','); }
+function carga(on, msg) { $('#carga').classList.toggle('on', on); if (msg) $('#cargaMsg').textContent = msg; }
+var tAviso;
+function aviso(m) { var a = $('#aviso'); a.textContent = m; a.style.display = 'block'; clearTimeout(tAviso); tAviso = setTimeout(function () { a.style.display = 'none'; }, 3800); }
+function guardar(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function pegar(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function provaPorId(id) { for (var i = 0; i < D.provas.length; i++) if (D.provas[i].id === id) return D.provas[i]; return null; }
+function estPorId(id) { for (var i = 0; i < D.estudantes.length; i++) if (D.estudantes[i].id === id) return D.estudantes[i]; return null; }
+function turmasDe(p) { return String(p.turmas || '').split(',').filter(Boolean); }
+function turmas() { var t = {}; D.estudantes.forEach(function (e) { t[e.turma] = (t[e.turma] || 0) + 1; }); return t; }
+function confirmar(msg, sim) {
+  return new Promise(function (ok) {
+    var m = document.createElement('div'); m.className = 'modal';
+    m.innerHTML = '<div class="card"><p style="margin-top:0">' + esc(msg) + '</p><div class="linha"><button class="btn sec" id="cNao">Cancelar</button><button class="btn" id="cSim">' + esc(sim || 'Confirmar') + '</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#cNao').onclick = function () { m.remove(); ok(false); };
+    m.querySelector('#cSim').onclick = function () { m.remove(); ok(true); };
+  });
+}
+// ---------- sessão (usuário e senha) ----------
+var SESS = null;      // {token, eu:{usuario,nome,perfil,trocarSenha}}
+var temUsuarios = true, profs = null;
+try { SESS = JSON.parse(pegar('corretor_sessao') || 'null'); } catch (e) { SESS = null; }
+if (DEMO_MODE) SESS = { token: 'demo', eu: { usuario: 'teste', nome: 'Modo de teste', perfil: 'coordenacao', trocarSenha: false } };
+function guardarSessao(r) { SESS = r; if (!DEMO_MODE) { if (r) guardar('corretor_sessao', JSON.stringify(r)); else { try { localStorage.removeItem('corretor_sessao'); } catch (e) {} } } }
+function professor() { return SESS && SESS.eu ? SESS.eu.nome : ''; }
+function ehCoord() { return !!(SESS && SESS.eu && SESS.eu.perfil === 'coordenacao'); }
+var SEM_TOKEN = ['situacao', 'entrar', 'criarPrimeiraCoordenacao', 'sair'];
+
+// ---------- servidor (Apps Script) ou modo de demonstração ----------
+function api(fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  if (!DEMO_MODE) return new Promise(function (ok, ko) {
+    if (SEM_TOKEN.indexOf(fn) < 0) args.unshift(SESS ? SESS.token : '');
+    function falha(m) {
+      m = String(m || 'Erro desconhecido.');
+      if (/^(Error: )?SESSAO:/.test(m)) { guardarSessao(null); render(); return ko(new Error(m.replace(/^(Error: )?SESSAO: ?/, ''))); }
+      if (/^(Error: )?TROCAR:/.test(m)) { if (SESS) { SESS.eu.trocarSenha = true; guardarSessao(SESS); } render(); return ko(new Error(m.replace(/^(Error: )?TROCAR: ?/, ''))); }
+      ko(new Error(m.replace(/^Error: /, '')));
+    }
+    if (VIA_GAS) {
+      var r = google.script.run.withSuccessHandler(ok).withFailureHandler(function (e) { falha((e && e.message) || String(e)); });
+      return r[fn].apply(r, args);
+    }
+    // credentials 'omit': não envia as contas do Google do navegador (evita o erro com várias contas logadas)
+    fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn: fn, args: args }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, credentials: 'omit', redirect: 'follow' })
+      .then(function (resp) { if (!resp.ok) throw new Error('HTTP ' + resp.status); return resp.json(); })
+      .then(function (j) { if (j && j.ok) ok(j.res); else falha(j && j.erro); })
+      .catch(function () { ko(new Error('Sem conexão com o servidor. Verifique a internet e tente de novo.')); });
+  });
+  return new Promise(function (ok, ko) { try { ok(DEMO[fn].apply(null, args)); } catch (e) { ko(e); } });
+}
+var DEMO = (function () {
+  var db;
+  try { db = JSON.parse(pegar('corretor_demo') || 'null'); } catch (e) {}
+  db = db || {
+    estudantes: [{ id: 'E1a2b3c4', turma: 'C2-7M-A', nome: 'Ana Luísa Conceição Pereira' }, { id: 'E5d6e7f8', turma: 'C2-7M-A', nome: 'João Pedro Gonçalves' }],
+    provas: [{ id: 'P7k2m9qa', nome: 'Prova Mensal de Matemática 7º ano', tipo: 'Prova mensal', turmas: 'C2-7M-A', questoes: 50, alternativas: 5, valor: 10,
+      gabarito: 'ABCDEBCDEACDEABDEABCEABCDACEBDBDACEECBDAADCEBBEDCA', professor: 'Exemplo', criadaEm: '' }],
+    resultados: []
+  };
+  function id(p) { return p + Math.random().toString(36).slice(2, 10); }
+  function sv() { guardar('corretor_demo', JSON.stringify(db)); return JSON.parse(JSON.stringify(Object.assign({ planilha: '' }, db))); }
+  return {
+    carregar: sv,
+    salvarEstudantes: function (turma, nomes) {
+      turma = String(turma).trim().toUpperCase(); if (!turma) throw new Error('Informe a turma.');
+      var ex = {}; db.estudantes.forEach(function (e) { if (e.turma === turma) ex[e.nome.toLowerCase()] = 1; });
+      nomes.forEach(function (n) { n = n.replace(/\s+/g, ' ').trim(); if (n && !ex[n.toLowerCase()]) { db.estudantes.push({ id: id('E'), turma: turma, nome: n }); ex[n.toLowerCase()] = 1; } });
+      db.estudantes.sort(function (a, b) { return a.turma === b.turma ? a.nome.localeCompare(b.nome, 'pt-BR') : a.turma.localeCompare(b.turma); });
+      return sv();
+    },
+    removerEstudante: function (i) { db.estudantes = db.estudantes.filter(function (e) { return e.id !== i; }); return sv(); },
+    salvarProva: function (p) {
+      var reg = Object.assign({}, p, { turmas: [].concat(p.turmas).join(','), id: p.id || id('P'), criadaEm: p.criadaEm || new Date().toLocaleString('pt-BR') });
+      var k = db.provas.findIndex(function (x) { return x.id === reg.id; });
+      if (k >= 0) db.provas[k] = reg; else db.provas.push(reg);
+      db.resultados.forEach(function (r) { if (r.provaId === reg.id) { var c = OMR.corrigir(r.respostas, reg.gabarito, reg.valor); r.acertos = c.acertos; r.nota = c.nota; } });
+      return sv();
+    },
+    excluirProva: function (i) { db.provas = db.provas.filter(function (p) { return p.id !== i; }); db.resultados = db.resultados.filter(function (r) { return r.provaId !== i; }); return sv(); },
+    salvarResultados: function (lista) {
+      var prof = professor();
+      lista.forEach(function (x) {
+        var p = db.provas.find(function (q) { return q.id === x.provaId; }), e = db.estudantes.find(function (q) { return q.id === x.estudanteId; }) || {};
+        var c = OMR.corrigir(x.respostas, p.gabarito, p.valor);
+        var reg = { provaId: p.id, prova: p.nome, tipo: p.tipo, turma: e.turma, estudanteId: x.estudanteId, estudante: e.nome, respostas: x.respostas, acertos: c.acertos, nota: c.nota, valor: p.valor, professor: prof, corrigidoEm: new Date().toLocaleString('pt-BR') };
+        var k = db.resultados.findIndex(function (r) { return r.provaId === p.id && r.estudanteId === x.estudanteId; });
+        if (k >= 0) db.resultados[k] = reg; else db.resultados.push(reg);
+      });
+      return sv();
+    },
+    salvarPdf: function () { return ''; },
+    listarProfessores: function () { return [{ usuario: 'teste', nome: 'Modo de teste', perfil: 'coordenacao', ativo: 'SIM', ultimoAcesso: '' }]; },
+    salvarProfessor: function () { throw new Error('No modo de teste não há cadastro de professores.'); },
+    trocarSenha: function () { throw new Error('No modo de teste não há senha.'); },
+    sair: function () { return true; }
+  };
+})();
+function chamar(msg, fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  carga(true, msg);
+  return api.apply(null, args).then(function (d) {
+    carga(false);
+    if (d && d.provas) D = d;
+    if (d && d.eu && SESS && !DEMO_MODE) { SESS.eu = d.eu; guardarSessao(SESS); }
+    return d;
+  }).catch(function (e) { carga(false); aviso((e && e.message) || String(e)); throw e; });
+}
+
+// ---------- navegação ----------
+var ICONES = {
+  corrigir: '<path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+  notas: '<path d="M5 19V9M10 19V5M15 19v-7M20 19v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  provas: '<rect x="5" y="3" width="14" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 8h6M9 12h6M9 16h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+  folhas: '<path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="10.5" cy="12" r="1.3" fill="currentColor"/><circle cx="14.5" cy="12" r="1.3" fill="none" stroke="currentColor"/><circle cx="10.5" cy="16" r="1.3" fill="none" stroke="currentColor"/><circle cx="14.5" cy="16" r="1.3" fill="currentColor"/>',
+  turmas: '<circle cx="9" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16.5" cy="8" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M16 13c2.4 0 4 1.3 4.6 3.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'
+};
+var NOMES = { corrigir: 'Corrigir', notas: 'Notas', provas: 'Provas', folhas: 'Folhas', turmas: 'Cadastros' };
+function desenharNav() {
+  $('#nav').innerHTML = Object.keys(NOMES).filter(function (k) { return k !== 'turmas' || ehCoord(); }).map(function (k) {
+    return '<button class="' + (k === aba ? 'on' : '') + '" onclick="ir(\'' + k + '\')"><svg viewBox="0 0 24 24">' + ICONES[k] + '</svg>' + NOMES[k] + '</button>';
+  }).join('');
+}
+function ir(k) { aba = k; trocandoSenha = false; desenharNav(); render(); window.scrollTo(0, 0); }
+var trocandoSenha = false, erroEntrada = '';
+function render() {
+  var logado = !!(SESS && SESS.token);
+  var bloqueado = !logado || (SESS.eu && SESS.eu.trocarSenha);
+  document.body.classList.toggle('semnav', bloqueado);
+  $('#quem').textContent = logado ? professor() + (ehCoord() ? ' (coordenação)' : '') + (DEMO_MODE ? '  |  modo de teste' : '') : '';
+  $('#conta').innerHTML = logado && !DEMO_MODE && !bloqueado ? '<button onclick="abrirTrocaSenha()">Senha</button><button onclick="sairConta()">Sair</button>' : '';
+  if (!logado) { $('#tela').innerHTML = telaEntrada(); return; }
+  if (SESS.eu.trocarSenha) { $('#tela').innerHTML = telaTrocaSenha(true); return; }
+  if (trocandoSenha) { $('#tela').innerHTML = telaTrocaSenha(false); return; }
+  if (aba === 'turmas' && !ehCoord()) aba = 'corrigir';
+  desenharNav();
+  var h = DEMO_MODE ? '<div class="demo">Modo de teste com dados de exemplo (turma C2-7M-A). Os dados ficam só neste aparelho. Instalado no Google, tudo vai para a planilha da escola.</div>' : '';
+  $('#tela').innerHTML = h + ({ corrigir: telaCorrigir, notas: telaNotas, provas: telaProvas, folhas: telaFolhas, turmas: telaTurmas })[aba]();
+}
+
+// ---------- ENTRADA (login, primeiro acesso, troca de senha) ----------
+function telaEntrada() {
+  var erro = erroEntrada ? '<div class="erro">' + esc(erroEntrada) + '</div>' : '';
+  if (!temUsuarios) return '<div class="card entrada"><h2>Primeiro acesso</h2>' +
+    '<p class="sub">Ainda não existe nenhuma conta. Crie agora a conta da coordenação. Depois, é por ela que você cadastra os professores.</p>' +
+    '<form onsubmit="criarPrimeira();return false" autocomplete="on">' +
+    '<label>Seu nome completo</label><input id="pNomeC" autocomplete="name">' +
+    '<label>Usuário (ex.: pedro.coord)</label><input id="pUsuC" autocomplete="username" autocapitalize="none" spellcheck="false">' +
+    '<label>Senha (mínimo 6 caracteres)</label><input id="pSenC" type="password" autocomplete="new-password">' +
+    '<label>Repita a senha</label><input id="pSenC2" type="password" autocomplete="new-password">' +
+    '<div style="margin-top:14px"><button class="btn larga" type="submit">Criar conta da coordenação</button></div></form>' + erro + '</div>';
+  return '<div class="card entrada"><h2>Entrar</h2><p class="sub">Use o usuário e a senha que a coordenação passou para você.</p>' +
+    '<form onsubmit="fazerLogin();return false" autocomplete="on">' +
+    '<label>Usuário</label><input id="lUsu" autocomplete="username" autocapitalize="none" spellcheck="false">' +
+    '<label>Senha</label><input id="lSen" type="password" autocomplete="current-password">' +
+    '<div style="margin-top:14px"><button class="btn larga" type="submit">Entrar</button></div></form>' + erro +
+    '<p class="sub">Esqueceu a senha? Peça à coordenação para criar uma senha nova.</p></div>';
+}
+function aposEntrar(r) {
+  erroEntrada = ''; guardarSessao(r); aba = 'corrigir';
+  if (r.eu.trocarSenha) { render(); return; }
+  chamar('Carregando dados da escola...', 'carregar').then(render).catch(render);
+}
+function fazerLogin() {
+  var u = $('#lUsu').value.trim(), s = $('#lSen').value;
+  if (!u || !s) { erroEntrada = 'Preencha o usuário e a senha.'; return render(); }
+  carga(true, 'Entrando...');
+  api('entrar', u, s).then(function (r) { carga(false); aposEntrar(r); })
+    .catch(function (e) { carga(false); erroEntrada = e.message; render(); var c = $('#lUsu'); if (c) c.value = u; });
+}
+function criarPrimeira() {
+  var n = $('#pNomeC').value.trim(), u = $('#pUsuC').value.trim(), s = $('#pSenC').value, s2 = $('#pSenC2').value;
+  if (!n || !u || !s) { erroEntrada = 'Preencha todos os campos.'; return render(); }
+  if (s !== s2) { erroEntrada = 'As duas senhas não são iguais.'; return render(); }
+  carga(true, 'Criando conta...');
+  api('criarPrimeiraCoordenacao', u, n, s).then(function (r) { carga(false); temUsuarios = true; aposEntrar(r); })
+    .catch(function (e) { carga(false); erroEntrada = e.message; if (/já foi criada/.test(e.message)) temUsuarios = true; render(); });
+}
+function telaTrocaSenha(obrig) {
+  return '<div class="card entrada"><h2>' + (obrig ? 'Crie sua senha' : 'Trocar senha') + '</h2>' +
+    (obrig ? '<p class="sub">Você entrou com uma senha provisória. Escolha agora uma senha só sua (mínimo 6 caracteres).</p>' : '') +
+    '<form onsubmit="salvarNovaSenha();return false">' +
+    '<input autocomplete="username" value="' + esc(SESS.eu.usuario) + '" style="display:none" readonly>' +
+    '<label>Senha atual' + (obrig ? ' (a provisória)' : '') + '</label><input id="tAtual" type="password" autocomplete="current-password">' +
+    '<label>Nova senha</label><input id="tNova" type="password" autocomplete="new-password">' +
+    '<label>Repita a nova senha</label><input id="tNova2" type="password" autocomplete="new-password">' +
+    '<div class="linha" style="margin-top:14px">' + (obrig ? '<button class="btn sec" type="button" onclick="sairConta()">Sair</button>' : '<button class="btn sec" type="button" onclick="trocandoSenha=false;render()">Cancelar</button>') +
+    '<button class="btn" type="submit">Salvar senha</button></div></form>' +
+    (erroEntrada ? '<div class="erro">' + esc(erroEntrada) + '</div>' : '') + '</div>';
+}
+function abrirTrocaSenha() { trocandoSenha = true; erroEntrada = ''; render(); }
+function salvarNovaSenha() {
+  var a = $('#tAtual').value, n = $('#tNova').value, n2 = $('#tNova2').value;
+  if (!a || !n) { erroEntrada = 'Preencha a senha atual e a nova.'; return render(); }
+  if (n !== n2) { erroEntrada = 'As duas senhas novas não são iguais.'; return render(); }
+  carga(true, 'Salvando senha...');
+  api('trocarSenha', a, n).then(function (r) {
+    carga(false); erroEntrada = ''; trocandoSenha = false; guardarSessao(r); aviso('Senha alterada.');
+    chamar('Carregando dados da escola...', 'carregar').then(render).catch(render);
+  }).catch(function (e) { carga(false); erroEntrada = e.message; render(); });
+}
+function sairConta() {
+  var t = SESS && SESS.token;
+  guardarSessao(null); erroEntrada = ''; trocandoSenha = false; profs = null; fila = [];
+  D = { estudantes: [], provas: [], resultados: [], planilha: '' };
+  if (t) api('sair', t).catch(function () {});
+  render();
+}
+
+// ---------- PROFESSORES (coordenação) ----------
+var carregandoProfs = false;
+function carregarProfs() {
+  if (carregandoProfs) return;
+  carregandoProfs = true;
+  api('listarProfessores').then(function (l) { profs = l; carregandoProfs = false; if (aba === 'turmas') render(); })
+    .catch(function (e) { carregandoProfs = false; profs = []; aviso(e.message); });
+}
+function secProfessores() {
+  var h = '<h2>Professores</h2><div class="card"><b>Cadastrar professor</b>' +
+    '<label>Nome completo</label><input id="nProfNome">' +
+    '<div class="linha"><div><label>Usuário (ex.: maria.silva)</label><input id="nProfUsu" autocapitalize="none" spellcheck="false" autocomplete="off"></div>' +
+    '<div><label>Perfil</label><select id="nProfPerfil"><option value="professor">Professor(a)</option><option value="coordenacao">Coordenação</option></select></div></div>' +
+    '<label>Senha provisória (o professor troca no primeiro acesso)</label><input id="nProfSenha" autocomplete="off">' +
+    '<div style="margin-top:12px"><button class="btn larga" onclick="cadastrarProf()">Cadastrar professor</button></div>' +
+    '<p class="sub">Passe o usuário e a senha provisória ao professor pessoalmente ou por mensagem individual.</p></div>';
+  if (profs === null) { carregarProfs(); return h + '<div class="vazio">Carregando professores...</div>'; }
+  h += '<div class="card"><div class="lista">' + profs.map(function (p) {
+    var at = p.ativo === 'SIM';
+    return '<div class="it"><div><b>' + esc(p.nome) + '</b><br><span class="sub">' + esc(p.usuario) + (p.ultimoAcesso ? '  |  último acesso ' + esc(p.ultimoAcesso) : '  |  ainda não entrou') + '</span><br>' +
+      '<span class="chip">' + (p.perfil === 'coordenacao' ? 'Coordenação' : 'Professor(a)') + '</span> ' + (at ? '<span class="chip ok">Ativo</span>' : '<span class="chip err">Desativado</span>') + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;flex:none">' +
+      '<button class="btn sec peq" onclick="novaSenhaProf(\'' + esc(p.usuario) + '\')">Nova senha</button>' +
+      (p.usuario === SESS.eu.usuario ? '' : '<button class="btn ' + (at ? 'perigo' : 'sec') + ' peq" onclick="ativarProf(\'' + esc(p.usuario) + '\',' + !at + ')">' + (at ? 'Desativar' : 'Reativar') + '</button>') +
+      '</div></div>';
+  }).join('') + '</div></div>';
+  return h;
+}
+function profPorUsuario(u) { return (profs || []).filter(function (p) { return p.usuario === u; })[0]; }
+function cadastrarProf() {
+  var p = { novo: true, nome: $('#nProfNome').value, usuario: $('#nProfUsu').value, perfil: $('#nProfPerfil').value, senha: $('#nProfSenha').value, ativo: true };
+  if (!p.nome.trim() || !p.usuario.trim() || !p.senha) return aviso('Preencha nome, usuário e senha provisória.');
+  chamar('Cadastrando...', 'salvarProfessor', p).then(function (l) { profs = l; aviso('Professor cadastrado. Usuário: ' + p.usuario.trim().toLowerCase()); render(); });
+}
+function ativarProf(u, ativo) {
+  var p = profPorUsuario(u);
+  confirmar((ativo ? 'Reativar ' : 'Desativar ') + p.nome + '?' + (ativo ? '' : ' Ele não conseguirá mais entrar. As notas que lançou continuam na planilha.'), ativo ? 'Reativar' : 'Desativar').then(function (s) {
+    if (!s) return;
+    chamar('Salvando...', 'salvarProfessor', { usuario: p.usuario, nome: p.nome, perfil: p.perfil, ativo: ativo }).then(function (l) { profs = l; render(); });
+  });
+}
+function novaSenhaProf(u) {
+  var p = profPorUsuario(u);
+  var m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = '<div class="card"><b>Nova senha provisória</b><p class="sub">' + esc(p.nome) + ' (' + esc(p.usuario) + ') vai entrar com esta senha e criar uma nova em seguida.</p>' +
+    '<input id="mSenha" autocomplete="off"><div class="linha" style="margin-top:12px"><button class="btn sec" id="mNao">Cancelar</button><button class="btn" id="mSim">Salvar</button></div></div>';
+  document.body.appendChild(m);
+  m.querySelector('#mNao').onclick = function () { m.remove(); };
+  m.querySelector('#mSim').onclick = function () {
+    var s = m.querySelector('#mSenha').value;
+    if (s.length < 6) return aviso('A senha precisa ter pelo menos 6 caracteres.');
+    m.remove();
+    chamar('Salvando...', 'salvarProfessor', { usuario: p.usuario, nome: p.nome, perfil: p.perfil, ativo: p.ativo === 'SIM', senha: s }).then(function (l) { profs = l; aviso('Senha provisória definida para ' + p.nome + '.'); render(); });
+  };
+}
+
+// ---------- TURMAS ----------
+var subCad = 'professores';
+function telaTurmas() {
+  var abas = '<div class="linha" style="margin-bottom:12px"><button class="btn ' + (subCad === 'professores' ? '' : 'sec') + ' peq" onclick="subCad=\'professores\';render()">Professores</button>' +
+    '<button class="btn ' + (subCad === 'turmas' ? '' : 'sec') + ' peq" onclick="subCad=\'turmas\';render()">Turmas e estudantes</button></div>';
+  return abas + (subCad === 'professores' ? secProfessores() : secTurmas());
+}
+function secTurmas() {
+  var t = turmas(), ks = Object.keys(t).sort();
+  var h = '<h2>Turmas e estudantes</h2><div class="card"><label>Turma (ex.: 7A, C2-7M-A)</label><input id="tTurma" list="listaT">' +
+    '<datalist id="listaT">' + ks.map(function (k) { return '<option value="' + esc(k) + '">'; }).join('') + '</datalist>' +
+    '<label>Nomes dos estudantes, um por linha (pode colar da planilha)</label><textarea id="tNomes" placeholder="Ana Luísa Pereira&#10;João Pedro Gonçalves"></textarea>' +
+    '<div style="margin-top:12px"><button class="btn larga" onclick="salvarTurma()">Adicionar estudantes</button></div>' +
+    '<p class="sub">Nomes repetidos na mesma turma são ignorados.</p></div>';
+  if (!ks.length) return h + '<div class="vazio">Nenhuma turma cadastrada ainda.</div>';
+  ks.forEach(function (k) {
+    var es = D.estudantes.filter(function (e) { return e.turma === k; });
+    h += '<details class="card"><summary><b>' + esc(k) + '</b> <span class="sub">' + es.length + ' estudantes</span></summary><div class="lista">' +
+      es.map(function (e) { return '<div class="it"><span>' + esc(e.nome) + '</span><button class="btn perigo peq" onclick="removerEst(\'' + e.id + '\')">Remover</button></div>'; }).join('') + '</div></details>';
+  });
+  return h;
+}
+function salvarTurma() {
+  var turma = $('#tTurma').value, nomes = $('#tNomes').value.split(/\r?\n/).map(function (s) { return s.split('\t')[0].trim(); }).filter(Boolean);
+  if (!turma.trim() || !nomes.length) return aviso('Informe a turma e pelo menos um nome.');
+  chamar('Salvando estudantes...', 'salvarEstudantes', turma, nomes).then(function () { aviso('Estudantes salvos.'); render(); });
+}
+function removerEst(id) {
+  var e = estPorId(id);
+  confirmar('Remover ' + e.nome + ' da turma ' + e.turma + '? As notas já lançadas continuam na planilha.', 'Remover').then(function (s) {
+    if (s) chamar('Removendo...', 'removerEstudante', id).then(render);
+  });
+}
+
+// ---------- PROVAS ----------
+function telaProvas() {
+  if (rascunho) return formProva();
+  var h = '<h2>Provas</h2><button class="btn larga" onclick="novaProva()">+ Nova prova</button><div style="height:12px"></div>';
+  if (!D.provas.length) return h + '<div class="vazio">Nenhuma prova cadastrada.</div>';
+  D.provas.slice().reverse().forEach(function (p) {
+    var corr = D.resultados.filter(function (r) { return r.provaId === p.id; }).length;
+    h += '<div class="card"><div class="linha" style="align-items:flex-start"><div><b>' + esc(p.nome) + '</b><br><span class="chip">' + esc(p.tipo) + '</span> ' +
+      '<span class="sub">' + p.questoes + ' questões, ' + p.alternativas + ' alternativas, vale ' + num(p.valor) + '</span><br>' +
+      '<span class="sub">Turmas: ' + esc(turmasDe(p).join(', ') || 'nenhuma') + '  |  ' + corr + ' corrigidas</span></div></div>' +
+      '<div class="linha" style="margin-top:10px"><button class="btn sec peq" onclick="editarProva(\'' + p.id + '\')">Editar</button>' +
+      '<button class="btn sec peq" onclick="folhasSel.prova=\'' + p.id + '\';folhasSel.turma=\'\';ir(\'folhas\')">Folhas</button>' +
+      (ehCoord() || p.professor === professor() ? '<button class="btn perigo peq" onclick="excluirProva(\'' + p.id + '\')">Excluir</button>' : '') + '</div>' +
+      (p.professor ? '<p class="sub" style="margin:8px 0 0">Criada por ' + esc(p.professor) + '</p>' : '') + '</div>';
+  });
+  return h;
+}
+function novaProva() { rascunho = { id: '', nome: '', tipo: TIPOS[0], turmas: [], questoes: 20, alternativas: 4, valor: 10, gab: [] }; render(); }
+function editarProva(id) {
+  var p = provaPorId(id);
+  rascunho = { id: p.id, nome: p.nome, tipo: p.tipo, turmas: turmasDe(p), questoes: p.questoes, alternativas: p.alternativas, valor: p.valor, gab: String(p.gabarito).split(''), criadaEm: p.criadaEm };
+  render();
+}
+function formProva() {
+  var r = rascunho, ts = Object.keys(turmas()).sort();
+  r.turmas.forEach(function (t) { if (ts.indexOf(t) < 0) ts.push(t); });
+  var h = '<h2>' + (r.id ? 'Editar prova' : 'Nova prova') + '</h2><div class="card">' +
+    '<label>Nome da prova</label><input id="pNome" value="' + esc(r.nome) + '" placeholder="Ex.: Matemática 7º ano, 3º trimestre" oninput="rascunho.nome=this.value">' +
+    '<label>Tipo</label><select onchange="rascunho.tipo=this.value">' + TIPOS.map(function (t) { return '<option' + (t === r.tipo ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
+    '<div class="linha"><div><label>Questões (1 a 100)</label><input type="number" min="1" max="100" value="' + r.questoes + '" onchange="mudarQ(this.value)"></div>' +
+    '<div><label>Alternativas</label><select onchange="rascunho.alternativas=+this.value;render()"><option value="4"' + (r.alternativas == 4 ? ' selected' : '') + '>A a D</option><option value="5"' + (r.alternativas == 5 ? ' selected' : '') + '>A a E</option></select></div>' +
+    '<div><label>Valor (pontos)</label><input type="number" min="0" step="0.5" value="' + r.valor + '" onchange="rascunho.valor=+String(this.value).replace(\',\',\'.\')"></div></div>' +
+    '<label>Turmas que fazem esta prova</label>' + (ts.length ? ts.map(function (t) {
+      return '<label class="chk"><input type="checkbox" ' + (r.turmas.indexOf(t) >= 0 ? 'checked' : '') + ' onchange="marcarTurma(\'' + esc(t) + '\',this.checked)">' + esc(t) + '</label>';
+    }).join('') : '<p class="sub">Cadastre as turmas na aba Turmas.</p>') + '</div>';
+  h += '<div class="card"><b>Gabarito</b><p class="sub">Toque na letra certa de cada questão. "Anular" dá o ponto para todos.</p>' +
+    '<label>Ou digite tudo de uma vez (ex.: ABDCA...)</label><input placeholder="ABCDABCD..." oninput="digitarGab(this.value)" autocapitalize="characters">' +
+    '<div class="gab" style="margin-top:12px">';
+  for (var i = 0; i < r.questoes; i++) {
+    h += '<div class="gq"><b>' + (i + 1) + '</b>';
+    for (var a = 0; a < r.alternativas; a++) { var L = OMR.LETRAS[a]; h += '<button class="' + (r.gab[i] === L ? 'on' : '') + '" onclick="marcarGab(' + i + ',\'' + L + '\',this)">' + L + '</button>'; }
+    h += '<button class="anu ' + (r.gab[i] === '*' ? 'on' : '') + '" style="width:auto;padding:0 5px" onclick="marcarGab(' + i + ',\'*\',this)">Anular</button></div>';
+  }
+  h += '</div></div><div class="linha"><button class="btn sec" onclick="rascunho=null;render()">Cancelar</button><button class="btn" onclick="salvarProva()">Salvar prova</button></div>';
+  return h;
+}
+function mudarQ(v) { v = Math.max(1, Math.min(100, parseInt(v) || 1)); rascunho.questoes = v; rascunho.gab = rascunho.gab.slice(0, v); render(); }
+function marcarTurma(t, on) { var a = rascunho.turmas.filter(function (x) { return x !== t; }); if (on) a.push(t); rascunho.turmas = a; }
+function marcarGab(i, L, el) {
+  rascunho.gab[i] = L;
+  Array.prototype.forEach.call(el.parentNode.querySelectorAll('button'), function (b) { b.classList.toggle('on', b === el); });
+}
+function digitarGab(v) {
+  var s = v.toUpperCase().replace(/[^A-E*]/g, '');
+  for (var i = 0; i < s.length && i < rascunho.questoes; i++) if (OMR.LETRAS.indexOf(s[i]) < rascunho.alternativas || s[i] === '*') rascunho.gab[i] = s[i];
+  var pos = document.activeElement;
+  var cont = document.querySelector('.gab');
+  Array.prototype.forEach.call(cont.children, function (row, i) {
+    Array.prototype.forEach.call(row.querySelectorAll('button'), function (b) { var L = b.classList.contains('anu') ? '*' : b.textContent; b.classList.toggle('on', rascunho.gab[i] === L); });
+  });
+  if (pos) pos.focus();
+}
+function salvarProva() {
+  var r = rascunho;
+  if (!String(r.nome).trim()) return aviso('Dê um nome para a prova.');
+  if (!r.turmas.length) return aviso('Escolha pelo menos uma turma.');
+  for (var i = 0; i < r.questoes; i++) {
+    var g = r.gab[i];
+    if (!g || (g !== '*' && OMR.LETRAS.indexOf(g) >= r.alternativas)) return aviso('Falta o gabarito da questão ' + (i + 1) + '.');
+  }
+  if (!(r.valor > 0)) return aviso('Informe o valor da prova.');
+  var p = { id: r.id, nome: r.nome.trim(), tipo: r.tipo, turmas: r.turmas, questoes: r.questoes, alternativas: r.alternativas, valor: r.valor, gabarito: r.gab.slice(0, r.questoes).join(''), professor: professor(), criadaEm: r.criadaEm };
+  chamar('Salvando prova...', 'salvarProva', p).then(function () { rascunho = null; aviso('Prova salva.'); render(); });
+}
+function excluirProva(id) {
+  var p = provaPorId(id);
+  confirmar('Excluir a prova "' + p.nome + '" e todas as notas lançadas dela? Isso não pode ser desfeito.', 'Excluir').then(function (s) {
+    if (s) chamar('Excluindo...', 'excluirProva', id).then(render);
+  });
+}
+
+// ---------- FOLHAS ----------
+function telaFolhas() {
+  var h = '<h2>Folhas de respostas</h2>';
+  if (!D.provas.length) return h + '<div class="vazio">Cadastre uma prova primeiro.</div>';
+  var p = provaPorId(folhasSel.prova) || D.provas[D.provas.length - 1]; folhasSel.prova = p.id;
+  var ts = turmasDe(p); if (ts.indexOf(folhasSel.turma) < 0) folhasSel.turma = ts[0] || '';
+  var es = D.estudantes.filter(function (e) { return e.turma === folhasSel.turma; });
+  h += '<div class="card"><label>Prova</label><select onchange="folhasSel.prova=this.value;render()">' +
+    D.provas.slice().reverse().map(function (x) { return '<option value="' + x.id + '"' + (x.id === p.id ? ' selected' : '') + '>' + esc(x.nome) + ' (' + esc(x.tipo) + ')</option>'; }).join('') + '</select>' +
+    '<label>Turma</label><select onchange="folhasSel.turma=this.value;render()">' + ts.map(function (t) { return '<option' + (t === folhasSel.turma ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></div>';
+  if (!es.length) return h + '<div class="vazio">Esta turma não tem estudantes cadastrados.</div>';
+  h += '<div class="card"><div class="linha"><b>' + es.length + ' estudantes</b><button class="btn sec peq" style="flex:none" onclick="marcarTodos()">Marcar/desmarcar todos</button></div><div id="selEst">' +
+    es.map(function (e) { return '<label class="chk"><input type="checkbox" value="' + e.id + '" checked>' + esc(e.nome) + '</label>'; }).join('') + '</div></div>' +
+    '<button class="btn larga" onclick="gerarFolhas()">Gerar PDF das folhas</button><div id="pdfOut" style="margin-top:12px"></div>' +
+    '<p class="sub">Imprima em tamanho real (100%), em papel A4, de preferência em impressora a laser. Cada folha tem um QR Code com o nome do estudante.</p>';
+  return h;
+}
+function marcarTodos() { var cs = document.querySelectorAll('#selEst input'), on = !Array.prototype.every.call(cs, function (c) { return c.checked; }); cs.forEach(function (c) { c.checked = on; }); }
+function gerarFolhas() {
+  var p = provaPorId(folhasSel.prova);
+  var ids = Array.prototype.filter.call(document.querySelectorAll('#selEst input'), function (c) { return c.checked; }).map(function (c) { return c.value; });
+  if (!ids.length) return aviso('Selecione pelo menos um estudante.');
+  var es = ids.map(estPorId);
+  carga(true, 'Gerando ' + es.length + ' folhas...');
+  setTimeout(function () {
+    try {
+      var doc = OMR.gerarPDF(p, es, window.jspdf.jsPDF, window.qrcode);
+      var nome = 'Folhas ' + p.nome + ' ' + folhasSel.turma + '.pdf';
+      var blob = doc.output('blob'), url = URL.createObjectURL(blob);
+      var out = '<div class="card"><b>PDF pronto.</b><div class="linha" style="margin-top:10px"><a class="btn sec" href="' + url + '" download="' + esc(nome) + '">Baixar aqui</a>';
+      if (DEMO_MODE) { carga(false); $('#pdfOut').innerHTML = out + '</div><p class="sub">Se o botão não baixar neste modo de teste, use o PDF de exemplo enviado na conversa. Instalado na escola, o PDF vai direto para o Google Drive.</p></div>'; return; }
+      var b64 = doc.output('datauristring').split(',')[1];
+      carga(true, 'Salvando no Google Drive...');
+      api('salvarPdf', nome, b64).then(function (link) {
+        carga(false);
+        $('#pdfOut').innerHTML = out + '<a class="btn" href="' + esc(link) + '" target="_blank">Abrir no Drive</a></div><p class="sub">Salvo na pasta "Corretor EMFAL - Folhas de respostas" do Drive.</p></div>';
+      }).catch(function (e) { carga(false); $('#pdfOut').innerHTML = out + '</div><p class="sub">Não consegui salvar no Drive: ' + esc(e.message || e) + '</p></div>'; });
+    } catch (e) { carga(false); aviso('Erro ao gerar o PDF: ' + e.message); }
+  }, 50);
+}
+
+// ---------- CORRIGIR ----------
+function telaCorrigir() {
+  var h = '<h2>Corrigir pela foto</h2><div class="linha"><label class="btn" for="fotoCam">Tirar foto</label>' +
+    '<label class="btn sec" for="fotoGal">Escolher fotos</label></div>' +
+    '<p class="sub">Folha inteira na foto, de frente, com boa luz e sem sombra forte. Os 4 quadrados pretos precisam aparecer.</p>';
+  if (!fila.length) return h + '<div class="vazio">Nenhuma folha lida ainda.</div>';
+  var prontas = fila.filter(function (f) { return f.st === 'ok' && !f.salvo && !f.alertas.length; }).length;
+  if (prontas) h += '<button class="btn larga" onclick="salvarSemPendencia()">Salvar ' + prontas + ' nota(s) sem pendência</button><div style="height:12px"></div>';
+  fila.slice().reverse().forEach(function (f) { h += cardFolha(f); });
+  if (fila.some(function (f) { return f.salvo || f.st === 'erro'; })) h += '<button class="btn sec larga" onclick="limparFila()">Limpar lidas e salvas</button>';
+  return h;
+}
+function cardFolha(f) {
+  var img = f.thumb ? '<img class="thumb" src="' + f.thumb + '">' : '';
+  if (f.st === 'lendo') return '<div class="card"><div class="linha">' + img + '<div><b>Lendo folha...</b></div></div></div>';
+  if (f.st === 'erro') return '<div class="card" style="border-color:var(--err)"><div class="linha" style="align-items:flex-start">' + img + '<div><span class="chip err">Não lida</span><p style="margin:6px 0 0">' + esc(f.erro) + '</p></div></div><button class="btn sec peq" style="margin-top:10px" onclick="tirar(' + f.k + ')">Remover</button></div>';
+  var p = f.prova, e = f.est, c = OMR.corrigir(f.resp.join(''), p.gabarito, p.valor);
+  var ant = D.resultados.find(function (r) { return r.provaId === p.id && r.estudanteId === f.estudanteId; });
+  var st = f.salvo ? '<span class="chip ok">Nota salva</span>' : f.alertas.length ? '<span class="chip al">' + f.alertas.length + ' para conferir</span>' : '<span class="chip">Pronta</span>';
+  var h = '<div class="card"><div class="linha" style="align-items:flex-start">' + img + '<div style="flex:3"><b>' + esc(e ? e.nome : 'Estudante não encontrado') + '</b><br>' +
+    '<span class="sub">' + esc(e ? e.turma : '') + '  |  ' + esc(p.nome) + '</span><br>' + st +
+    (ant && !f.salvo ? ' <span class="chip al">já tinha nota ' + num(ant.nota) + '</span>' : '') + '</div>' +
+    '<div style="text-align:right;flex:1"><div class="nota">' + num(c.nota) + '</div><span class="sub">de ' + num(p.valor) + '<br>' + c.acertos + '/' + p.questoes + ' acertos</span></div></div>';
+  if (!e) h += '<p class="sub">Este estudante foi removido do cadastro. A nota ainda pode ser salva.</p>';
+  h += '<details' + (f.alertas.length && !f.salvo ? ' open' : '') + '><summary class="sub" style="margin-top:8px">Ver e ajustar respostas</summary><div class="resp">';
+  for (var i = 0; i < p.questoes; i++) {
+    var r = f.resp[i], g = p.gabarito[i], cls = (g === '*' || r === g) ? 'ok' : 'err';
+    if (f.alertas.indexOf(i) >= 0) cls += ' al';
+    h += '<div class="' + cls + '"><b>' + (i + 1) + '</b> <span class="sub">(' + (g === '*' ? 'anul.' : g) + ')</span><select onchange="ajustar(' + f.k + ',' + i + ',this.value)">';
+    for (var a = 0; a < p.alternativas; a++) h += '<option' + (r === OMR.LETRAS[a] ? ' selected' : '') + '>' + OMR.LETRAS[a] + '</option>';
+    h += '<option value="-"' + (r === '-' ? ' selected' : '') + '>Branco</option><option value="*"' + (r === '*' ? ' selected' : '') + '>Dupla</option></select></div>';
+  }
+  h += '</div></details><div class="linha" style="margin-top:10px">' +
+    (f.alertas.length && !f.salvo ? '<button class="btn sec peq" onclick="conferido(' + f.k + ')">Conferi</button>' : '') +
+    '<button class="btn peq" onclick="salvarUma(' + f.k + ')">' + (f.salvo ? 'Salvar de novo' : 'Salvar nota') + '</button>' +
+    '<button class="btn perigo peq" onclick="tirar(' + f.k + ')">Descartar</button></div></div>';
+  return h;
+}
+function achar(k) { return fila.find(function (f) { return f.k === k; }); }
+function ajustar(k, i, v) { var f = achar(k); f.resp[i] = v; f.alertas = f.alertas.filter(function (x) { return x !== i; }); f.salvo = false; render(); }
+function conferido(k) { achar(k).alertas = []; render(); }
+function tirar(k) { fila = fila.filter(function (f) { return f.k !== k; }); render(); }
+function limparFila() { fila = fila.filter(function (f) { return !(f.salvo || f.st === 'erro'); }); render(); }
+function salvarLista(fs) {
+  var lista = fs.map(function (f) { return { provaId: f.prova.id, estudanteId: f.estudanteId, respostas: f.resp.join('') }; });
+  return chamar('Salvando ' + lista.length + ' nota(s)...', 'salvarResultados', lista).then(function () {
+    fs.forEach(function (f) { f.salvo = true; f.alertas = []; }); aviso(lista.length + ' nota(s) salva(s).'); render();
+  });
+}
+function salvarUma(k) {
+  var f = achar(k);
+  if (!f.alertas.length) return salvarLista([f]);
+  confirmar('Ainda há ' + f.alertas.length + ' questão(ões) para conferir. Salvar assim mesmo?', 'Salvar').then(function (s) { if (s) salvarLista([f]); });
+}
+function salvarSemPendencia() { salvarLista(fila.filter(function (f) { return f.st === 'ok' && !f.salvo && !f.alertas.length; })); }
+
+function carregarImagem(file) {
+  return new Promise(function (ok, ko) {
+    var url = URL.createObjectURL(file), im = new Image();
+    im.onload = function () { ok(im); }; im.onerror = function () { ko(new Error('Não consegui abrir esta imagem.')); }; im.src = url;
+  });
+}
+function lerArquivos(files) {
+  files = Array.prototype.slice.call(files || []);
+  if (!files.length) return;
+  ir('corrigir');
+  var cadeia = Promise.resolve();
+  files.forEach(function (file) {
+    var f = { k: ++seq, st: 'lendo', alertas: [] };
+    fila.push(f);
+    cadeia = cadeia.then(function () {
+      render();
+      return carregarImagem(file).then(function (im) {
+        return new Promise(function (ok) { setTimeout(ok, 30); }).then(function () {
+          var esc1 = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+          var cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * esc1); cv.height = Math.round(im.naturalHeight * esc1);
+          var cx = cv.getContext('2d'); cx.drawImage(im, 0, 0, cv.width, cv.height);
+          var tb = document.createElement('canvas'), te = 160 / Math.max(cv.width, cv.height); tb.width = cv.width * te; tb.height = cv.height * te;
+          tb.getContext('2d').drawImage(cv, 0, 0, tb.width, tb.height); f.thumb = tb.toDataURL('image/jpeg', 0.7);
+          var r = OMR.lerFolha(cx.getImageData(0, 0, cv.width, cv.height), window.jsQR, provaPorId);
+          if (!r.ok) {
+            f.st = 'erro'; f.erro = r.erro;
+            if (r.provaId && !provaPorId(r.provaId)) f.erro += ' Toque em Notas para atualizar os dados e tente de novo.';
+            return;
+          }
+          f.st = 'ok'; f.prova = provaPorId(r.provaId); f.estudanteId = r.estudanteId; f.est = estPorId(r.estudanteId); f.resp = r.respostas; f.alertas = r.alertas;
+          fila.forEach(function (o) { if (o !== f && o.st === 'ok' && o.prova.id === f.prova.id && o.estudanteId === f.estudanteId && !o.salvo) o.st = 'erro', o.erro = 'Folha repetida: este estudante foi lido de novo mais abaixo.'; });
+        });
+      }).catch(function (e) { f.st = 'erro'; f.erro = e.message; });
+    });
+  });
+  cadeia.then(render);
+}
+$('#fotoCam').onchange = function () { lerArquivos(this.files); this.value = ''; };
+$('#fotoGal').onchange = function () { lerArquivos(this.files); this.value = ''; };
+
+// ---------- NOTAS ----------
+function telaNotas() {
+  var h = '<h2>Notas</h2>';
+  if (!D.provas.length) return h + '<div class="vazio">Nenhuma prova cadastrada.</div>';
+  var p = provaPorId(filtroNotas.prova) || D.provas[D.provas.length - 1]; filtroNotas.prova = p.id;
+  var ts = turmasDe(p); if (ts.indexOf(filtroNotas.turma) < 0) filtroNotas.turma = ts[0] || '';
+  h += '<div class="card"><label>Prova</label><select onchange="filtroNotas.prova=this.value;render()">' +
+    D.provas.slice().reverse().map(function (x) { return '<option value="' + x.id + '"' + (x.id === p.id ? ' selected' : '') + '>' + esc(x.nome) + ' (' + esc(x.tipo) + ')</option>'; }).join('') + '</select>' +
+    '<label>Turma</label><select onchange="filtroNotas.turma=this.value;render()">' + ts.map(function (t) { return '<option' + (t === filtroNotas.turma ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select>' +
+    '<div class="linha" style="margin-top:12px"><button class="btn sec peq" onclick="atualizar()">Atualizar</button>' +
+    (D.planilha ? '<a class="btn sec peq" target="_blank" href="' + esc(D.planilha) + '">Abrir planilha</a>' : '') + '</div></div>';
+  var es = D.estudantes.filter(function (e) { return e.turma === filtroNotas.turma; });
+  var res = D.resultados.filter(function (r) { return r.provaId === p.id && (r.turma === filtroNotas.turma || es.some(function (e) { return e.id === r.estudanteId; })); });
+  var porId = {}; res.forEach(function (r) { porId[r.estudanteId] = r; });
+  var corr = res.length, media = corr ? res.reduce(function (s, r) { return s + Number(r.nota); }, 0) / corr : 0;
+  var naMedia = res.filter(function (r) { return Number(r.nota) >= 0.6 * p.valor; }).length;
+  h += '<div class="stats"><div><b>' + corr + '/' + es.length + '</b><span>corrigidas</span></div><div><b>' + (corr ? num(media) : '0') + '</b><span>média (de ' + num(p.valor) + ')</span></div><div><b>' + (corr ? Math.round(naMedia * 100 / corr) : 0) + '%</b><span>com 60% ou mais</span></div></div>';
+  h += '<div class="card" style="padding:6px"><table><tr><th>Estudante</th><th style="text-align:right">Acertos</th><th style="text-align:right">Nota</th></tr>';
+  es.forEach(function (e) {
+    var r = porId[e.id];
+    h += '<tr><td>' + esc(e.nome) + '</td>' + (r ? '<td class="n">' + r.acertos + '/' + p.questoes + '</td><td class="n"><span class="chip ' + (Number(r.nota) >= 0.6 * p.valor ? 'ok' : 'err') + '">' + num(r.nota) + '</span></td>' : '<td class="n sub" colspan="2">sem nota</td>') + '</tr>';
+  });
+  res.filter(function (r) { return !es.some(function (e) { return e.id === r.estudanteId; }); }).forEach(function (r) {
+    h += '<tr><td>' + esc(r.estudante) + ' <span class="sub">(fora do cadastro)</span></td><td class="n">' + r.acertos + '/' + p.questoes + '</td><td class="n">' + num(r.nota) + '</td></tr>';
+  });
+  h += '</table></div>';
+  if (corr) {
+    var q = [];
+    for (var i = 0; i < p.questoes; i++) {
+      if (p.gabarito[i] === '*') continue;
+      var ac = res.filter(function (r) { return String(r.respostas)[i] === p.gabarito[i]; }).length;
+      q.push({ i: i, pc: Math.round(ac * 100 / corr) });
+    }
+    q.sort(function (a, b) { return a.pc - b.pc; });
+    h += '<h3>Questões com menos acertos nesta turma</h3><div class="card"><div class="lista">' + q.slice(0, 6).map(function (x) {
+      return '<div class="it"><span>Questão ' + (x.i + 1) + ' <span class="sub">(gabarito ' + p.gabarito[x.i] + ')</span></span><span class="chip ' + (x.pc < 50 ? 'err' : 'ok') + '">' + x.pc + '% de acerto</span></div>';
+    }).join('') + '</div></div>';
+  }
+  return h;
+}
+function atualizar() { chamar('Atualizando...', 'carregar').then(render); }
+
+// ---------- início ----------
+render();
+if (SESS) {
+  chamar('Carregando dados da escola...', 'carregar').then(render).catch(function () { render(); });
+} else {
+  carga(true, 'Abrindo...');
+  api('situacao').then(function (r) { carga(false); temUsuarios = r.temUsuarios; render(); })
+    .catch(function (e) { carga(false); erroEntrada = 'Não consegui falar com o servidor: ' + e.message; render(); });
+}
+</script>
+</body>
+</html>
