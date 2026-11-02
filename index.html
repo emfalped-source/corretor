@@ -585,7 +585,11 @@ function secProfessores() {
     '<div><label>Perfil</label><select id="nProfPerfil"><option value="professor">Professor(a)</option><option value="coordenacao">Coordenação</option></select></div></div>' +
     '<label>Senha provisória (o professor troca no primeiro acesso)</label><input id="nProfSenha" autocomplete="off">' +
     '<div style="margin-top:12px"><button class="btn larga" onclick="cadastrarProf()">Cadastrar professor</button></div>' +
-    '<p class="sub">Passe o usuário e a senha provisória ao professor pessoalmente ou por mensagem individual.</p></div>';
+    '<p class="sub">Passe o usuário e a senha provisória ao professor pessoalmente ou por mensagem individual.</p></div>' +
+    (DEMO_MODE ? '' : '<div class="card"><b>Cadastrar vários de uma vez</b>' +
+    '<p class="sub">Uma linha por professor: <b>Nome; usuário; turmas</b>. Turmas separadas por espaço (ex.: 6A 6B 7C) ou TODAS. Exemplo: <i>Helen; helen; 7A 7B 7C</i>. O app cria as contas, marca as turmas e gera uma senha provisória para cada um. Quem já tem conta é pulado.</p>' +
+    '<textarea id="loteTxt" rows="8" style="width:100%;font-family:inherit" placeholder="Helen; helen; 7A 7B 7C"></textarea>' +
+    '<div style="margin-top:10px"><button class="btn larga" onclick="cadastrarLote()">Conferir e cadastrar</button></div></div>');
   if (profs === null) { carregarProfs(); return h + '<div class="vazio">Carregando professores...</div>'; }
   h += '<div class="card"><div class="lista">' + profs.map(function (p) {
     var at = p.ativo === 'SIM';
@@ -623,6 +627,73 @@ function resumoLotacao(u) {
   if (t.indexOf('TODAS') >= 0) return 'Turmas: todas (AEE, apoio ou direção)';
   if (!t.length) return 'Turmas: nenhuma cadastrada (vê só os próprios registros)';
   return 'Turmas: ' + t.map(nomeTurma).join(', ');
+}
+// "6A", "6ºA", "6º A" -> código da turma (1º a 5º à tarde, 6º a 9º de manhã)
+function codigoTurma(tok) {
+  var m = /^(\d)\s*[º°o]?\s*([A-Z])$/i.exec(String(tok || '').trim());
+  if (!m) return '';
+  var ano = +m[1], l = m[2].toUpperCase();
+  if (ano >= 1 && ano <= 3) return 'FRCIA' + ano + 'T' + l;
+  if (ano >= 4 && ano <= 5) return 'FRCPA' + (ano - 3) + 'T' + l;
+  if (ano === 6) return 'FRCPA3M' + l;
+  if (ano >= 7 && ano <= 9) return 'FRCAA' + (ano - 6) + 'M' + l;
+  return '';
+}
+function lerLote(txt, existentes) {
+  var lista = [], erros = [], vistos = {};
+  txt.split(/\r?\n/).forEach(function (linha, i) {
+    linha = linha.trim(); if (!linha) return;
+    var p = linha.split(';').map(function (x) { return x.trim(); });
+    if (p.length < 2 || !p[0] || !p[1]) { erros.push('Linha ' + (i + 1) + ': use "Nome; usuário; turmas".'); return; }
+    var usu = p[1].toLowerCase();
+    if (vistos[usu]) { erros.push('Linha ' + (i + 1) + ': o usuário ' + usu + ' aparece duas vezes.'); return; }
+    vistos[usu] = 1;
+    var turmasL = [];
+    String(p[2] || '').replace(/(\d)\s*[º°]\s+([A-Za-z])\b/g, '$1$2').split(/[\s,]+/).filter(Boolean).forEach(function (t) {
+      if (/^todas$/i.test(t)) { turmasL = ['TODAS']; return; }
+      if (turmasL[0] === 'TODAS') return;
+      var c = codigoTurma(t);
+      if (!c || (existentes.length && existentes.indexOf(c) < 0)) erros.push('Linha ' + (i + 1) + ': turma "' + t + '" não existe no Corretor.');
+      else if (turmasL.indexOf(c) < 0) turmasL.push(c);
+    });
+    lista.push({ nome: p[0], usuario: usu, turmas: turmasL });
+  });
+  return { lista: lista, erros: erros };
+}
+function cadastrarLote() {
+  if (!LOT) { chamar('Carregando as turmas...', 'listarLotacao').then(function (r) { LOT = r; cadastrarLote(); }); return; }
+  var r = lerLote($('#loteTxt').value, LOT.turmas || []);
+  if (!r.lista.length && !r.erros.length) return aviso('Cole a lista de professores primeiro.');
+  if (r.erros.length) return aviso(r.erros.slice(0, 3).join(' ') + (r.erros.length > 3 ? ' (e mais ' + (r.erros.length - 3) + ')' : ''));
+  confirmar('Cadastrar ' + r.lista.length + ' professor(es) com as turmas indicadas? Quem já tem conta será pulado.', 'Cadastrar').then(function (s) {
+    if (!s) return;
+    chamar('Cadastrando ' + r.lista.length + ' professores... (pode levar até 1 minuto)', 'cadastrarProfessoresLote', r.lista).then(function (res) {
+      profs = res.professores; LOT = res.lotacao; render();
+      mostrarSenhasLote(res);
+    });
+  });
+}
+function mostrarSenhasLote(res) {
+  var linhas = res.criados.map(function (c) { return c.nome + '\t' + c.usuario + '\t' + c.senha; });
+  var m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = '<div class="card" style="max-height:90vh;overflow:auto;max-width:560px"><b>' + res.criados.length + ' conta(s) criada(s)</b>' +
+    (res.pulados.length ? '<p class="sub">Já existiam e foram pulados: ' + esc(res.pulados.join(', ')) + '.</p>' : '') +
+    '<p class="sub">Guarde esta lista agora: as senhas provisórias não aparecem de novo. Entregue a cada professor só o dele, pessoalmente ou em mensagem individual. No primeiro acesso, cada um cria a própria senha.</p>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:14px"><tr><th style="text-align:left">Nome</th><th style="text-align:left">Usuário</th><th style="text-align:left">Senha provisória</th></tr>' +
+    res.criados.map(function (c) { return '<tr><td>' + esc(c.nome) + '</td><td>' + esc(c.usuario) + '</td><td style="font-family:monospace">' + esc(c.senha) + '</td></tr>'; }).join('') + '</table>' +
+    '<div class="linha" style="margin-top:12px"><button class="btn sec" id="lsCopiar">Copiar lista</button><button class="btn sec" id="lsImprimir">Imprimir</button><button class="btn" id="lsOk">Já guardei</button></div></div>';
+  document.body.appendChild(m);
+  m.querySelector('#lsCopiar').onclick = function () {
+    var t = 'Nome\tUsuário\tSenha provisória\n' + linhas.join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { aviso('Lista copiada. Cole numa planilha ou documento.'); }, function () { aviso('Não deu para copiar. Use Imprimir.'); });
+  };
+  m.querySelector('#lsImprimir').onclick = function () {
+    var w = window.open('', '_blank'); if (!w) return aviso('Libere as janelas pop-up para imprimir.');
+    w.document.write('<title>Contas Corretor EMFAL</title><style>body{font-family:Arial;font-size:13px}td,th{border:1px solid #999;padding:6px 8px;text-align:left}table{border-collapse:collapse}</style><h3>Contas criadas no Corretor EMFAL</h3><p>Endereço: https://emfalped-source.github.io/corretor/</p><table><tr><th>Nome</th><th>Usuário</th><th>Senha provisória</th></tr>' +
+      res.criados.map(function (c) { return '<tr><td>' + esc(c.nome) + '</td><td>' + esc(c.usuario) + '</td><td>' + esc(c.senha) + '</td></tr>'; }).join('') + '</table>');
+    w.document.close(); w.print();
+  };
+  m.querySelector('#lsOk').onclick = function () { m.remove(); };
 }
 function turmasProf(u) {
   if (DEMO_MODE) return aviso('No modo de teste não há cadastro de turmas por professor.');
