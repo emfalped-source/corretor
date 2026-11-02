@@ -564,7 +564,7 @@ function salvarNovaSenha() {
 }
 function sairConta() {
   var t = SESS && SESS.token;
-  guardarSessao(null); erroEntrada = ''; trocandoSenha = false; profs = null; fila = [];
+  guardarSessao(null); erroEntrada = ''; trocandoSenha = false; profs = null; LOT = null; fila = [];
   D = { estudantes: [], provas: [], resultados: [], planilha: '' };
   if (t) api('sair', t).catch(function () {});
   render();
@@ -590,8 +590,10 @@ function secProfessores() {
   h += '<div class="card"><div class="lista">' + profs.map(function (p) {
     var at = p.ativo === 'SIM';
     return '<div class="it"><div><b>' + esc(p.nome) + '</b><br><span class="sub">' + esc(p.usuario) + (p.ultimoAcesso ? '  |  último acesso ' + esc(p.ultimoAcesso) : '  |  ainda não entrou') + '</span><br>' +
-      '<span class="chip">' + (p.perfil === 'coordenacao' ? 'Coordenação' : 'Professor(a)') + '</span> ' + (at ? '<span class="chip ok">Ativo</span>' : '<span class="chip err">Desativado</span>') + '</div>' +
+      '<span class="chip">' + (p.perfil === 'coordenacao' ? 'Coordenação' : 'Professor(a)') + '</span> ' + (at ? '<span class="chip ok">Ativo</span>' : '<span class="chip err">Desativado</span>') +
+      (p.perfil === 'coordenacao' ? '' : '<br><span class="sub">' + resumoLotacao(p.usuario) + '</span>') + '</div>' +
       '<div style="display:flex;flex-direction:column;gap:6px;flex:none">' +
+      (p.perfil === 'coordenacao' ? '' : '<button class="btn sec peq" onclick="turmasProf(\'' + esc(p.usuario) + '\')">Turmas</button>') +
       '<button class="btn sec peq" onclick="novaSenhaProf(\'' + esc(p.usuario) + '\')">Nova senha</button>' +
       (p.usuario === SESS.eu.usuario ? '' : '<button class="btn ' + (at ? 'perigo' : 'sec') + ' peq" onclick="ativarProf(\'' + esc(p.usuario) + '\',' + !at + ')">' + (at ? 'Desativar' : 'Reativar') + '</button>') +
       '</div></div>';
@@ -599,6 +601,50 @@ function secProfessores() {
   return h;
 }
 function profPorUsuario(u) { return (profs || []).filter(function (p) { return p.usuario === u; })[0]; }
+
+// ---------- TURMAS DE CADA PROFESSOR (lotação) ----------
+// Define o que cada professor vê nos apps Relatórios e Ocorrências.
+var LOT = null, carregandoLot = false;
+function carregarLotacao() {
+  if (carregandoLot || DEMO_MODE) return;
+  carregandoLot = true;
+  api('listarLotacao').then(function (r) { LOT = r; carregandoLot = false; if (aba === 'turmas') render(); })
+    .catch(function () { carregandoLot = false; LOT = { lotacao: {}, turmas: [] }; });
+}
+function nomeTurma(t) {
+  var m = /^FRC(IA|PA|AA)(\d)([MT])([A-Z])$/.exec(String(t || '').toUpperCase());
+  if (!m) return String(t || '');
+  return ({ IA: 0, PA: 3, AA: 6 }[m[1]] + Number(m[2])) + 'º ' + m[4] + (m[3] === 'M' ? ' (manhã)' : ' (tarde)');
+}
+function resumoLotacao(u) {
+  if (DEMO_MODE) return '';
+  if (!LOT) { carregarLotacao(); return 'Turmas: carregando...'; }
+  var t = LOT.lotacao[u] || [];
+  if (t.indexOf('TODAS') >= 0) return 'Turmas: todas (AEE, apoio ou direção)';
+  if (!t.length) return 'Turmas: nenhuma cadastrada (vê só os próprios registros)';
+  return 'Turmas: ' + t.map(nomeTurma).join(', ');
+}
+function turmasProf(u) {
+  if (DEMO_MODE) return aviso('No modo de teste não há cadastro de turmas por professor.');
+  if (!LOT) { carregarLotacao(); return aviso('Carregando as turmas. Tente de novo em instantes.'); }
+  var p = profPorUsuario(u), atual = LOT.lotacao[u] || [], todas = atual.indexOf('TODAS') >= 0;
+  var lista = (LOT.turmas.length ? LOT.turmas : Object.keys(turmas()).sort()).slice().sort(function (a, b) { return nomeTurma(a).localeCompare(nomeTurma(b), 'pt-BR', { numeric: true }); });
+  var m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = '<div class="card" style="max-height:90vh;overflow:auto"><b>Turmas de ' + esc(p.nome) + '</b>' +
+    '<p class="sub">Marque as turmas em que este professor leciona. Nos apps Relatórios e Ocorrências ele verá só os estudantes dessas turmas, além dos registros que ele mesmo fez.</p>' +
+    '<label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" id="lTodas"' + (todas ? ' checked' : '') + ' style="width:auto"> <span><b>Todas as turmas</b> (AEE, apoio, direção)</span></label>' +
+    '<div id="lLista" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:4px">' + lista.map(function (t) {
+      return '<label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" value="' + esc(t) + '"' + (atual.indexOf(t) >= 0 ? ' checked' : '') + ' style="width:auto"> ' + esc(nomeTurma(t)) + '</label>';
+    }).join('') + '</div>' +
+    '<div class="linha" style="margin-top:12px"><button class="btn sec" id="lNao">Cancelar</button><button class="btn" id="lSim">Salvar</button></div></div>';
+  document.body.appendChild(m);
+  m.querySelector('#lNao').onclick = function () { m.remove(); };
+  m.querySelector('#lSim').onclick = function () {
+    var sel = m.querySelector('#lTodas').checked ? ['TODAS'] : [].map.call(m.querySelectorAll('#lLista input:checked'), function (c) { return c.value; });
+    m.remove();
+    chamar('Salvando...', 'salvarLotacao', u, sel).then(function (r) { LOT = r; aviso('Turmas de ' + p.nome + ' salvas.'); render(); });
+  };
+}
 function cadastrarProf() {
   var p = { novo: true, nome: $('#nProfNome').value, usuario: $('#nProfUsu').value, perfil: $('#nProfPerfil').value, senha: $('#nProfSenha').value, ativo: true };
   if (!p.nome.trim() || !p.usuario.trim() || !p.senha) return aviso('Preencha nome, usuário e senha provisória.');
