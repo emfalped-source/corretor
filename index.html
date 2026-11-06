@@ -228,10 +228,12 @@ body.semnav main{padding-bottom:24px}
     }
     return out;
   }
+  // área com sinal: positiva só quando os cantos seguem a ordem TL, TR, BR, BL (sentido horário na imagem).
+  // Sem o sinal, com poucas marcas na folha, a ordem dos cantos podia sair trocada.
   function areaQuad(p) {
     var s = 0;
     for (var i = 0; i < 4; i++) { var a = p[i], b = p[(i + 1) % 4]; s += a.cx * b.cy - b.cx * a.cy; }
-    return Math.abs(s) / 2;
+    return s / 2;
   }
   function acharMarcas(b, w, h) {
     var M = Math.max(w, h), minLado = 0.012 * M;
