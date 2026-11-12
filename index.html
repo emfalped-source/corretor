@@ -74,6 +74,12 @@ td.n{text-align:right;white-space:nowrap}
 #aviso{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--txt);color:var(--fundo);padding:12px 14px;border-radius:10px;z-index:21;display:none;font-size:14px}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}
 .modal .card{max-width:420px;width:100%}
+.modal.foto .card{max-width:900px}
+.fotoBox{max-height:72vh;overflow:auto;border-radius:8px;background:#222;text-align:center}
+.fotoBox img{width:100%;display:block;cursor:zoom-in}
+.fotoBox.zoom img{width:250%;max-width:none;cursor:zoom-out}
+.thumb.clic{cursor:pointer}
+.modal select{width:100%;margin-top:4px}
 .demo{background:var(--alf);color:var(--al);font-size:13px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
 input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;left:-9999px}
 label.btn{display:flex;margin:0;font-size:16px;color:var(--card)}
@@ -297,36 +303,51 @@ body.semnav main{padding-bottom:24px}
     return tot ? esc / tot : 0;
   }
 
-  /* Lê uma foto. img = {data (RGBA), width, height}; jsQR = função da biblioteca;
-     buscarProva(provaId) devolve {questoes, alternativas} ou null.
-     Retorna {ok, erro, provaId, estudanteId, respostas:[ 'A'..'E' | '-' branco | '*' dupla ], alertas:[índices]} */
-  function lerFolha(img, jsQR, buscarProva) {
-    var w = img.width, h = img.height;
-    var qr = jsQR(img.data, w, h, { inversionAttempts: 'attemptBoth' });
-    if (!qr) return { ok: false, erro: 'Não encontrei o QR Code. Fotografe a folha inteira, de frente e com boa luz.' };
-    var cod = lerCodigo(qr.data);
-    if (!cod) return { ok: false, erro: 'Este QR Code não é de uma folha do Corretor EMFAL.' };
-    var prova = buscarProva(cod.provaId);
-    if (!prova) return { ok: false, erro: 'A prova desta folha não foi encontrada no sistema (código ' + cod.provaId + ').', provaId: cod.provaId, estudanteId: cod.estudanteId };
-    var b = binarizar(cinza(img.data, w, h), w, h);
-    var marcas = acharMarcas(b, w, h);
-    if (!marcas) return { ok: false, erro: 'Não encontrei os 4 quadrados pretos dos cantos. Fotografe a folha inteira, sobre uma mesa clara.' };
-    var loc = qr.location, qc = [(loc.topLeftCorner.x + loc.bottomRightCorner.x + loc.topRightCorner.x + loc.bottomLeftCorner.x) / 4,
-      (loc.topLeftCorner.y + loc.bottomRightCorner.y + loc.topRightCorner.y + loc.bottomLeftCorner.y) / 4];
-    var H = null, menor = Infinity;
-    for (var k = 0; k < 4; k++) {
-      var dst = [0, 1, 2, 3].map(function (j) { return marcas[(j + k) % 4]; });
-      var Hk = homografia(L.mk.c, dst);
-      if (!Hk) continue;
-      var pq = aplicar(Hk, L.qr.x + L.qr.s / 2, L.qr.y + L.qr.s / 2), d = Math.hypot(pq[0] - qc[0], pq[1] - qc[1]);
-      if (d < menor) { menor = d; H = Hk; }
+  function preparar(img) {
+    var w = img.width, h = img.height, b = binarizar(cinza(img.data, w, h), w, h);
+    return { b: b, w: w, h: h, marcas: acharMarcas(b, w, h) };
+  }
+  // As 4 posições possíveis da folha na foto (foto girada 0, 90, 180 ou 270 graus)
+  function homografias(marcas) {
+    return [0, 1, 2, 3].map(function (k) { return homografia(L.mk.c, [0, 1, 2, 3].map(function (j) { return marcas[(j + k) % 4]; })); });
+  }
+  // Quanto da área do QR Code está escura (o QR tem ~50% de preto; o resto da folha, bem menos)
+  function manchaQR(P, H) {
+    if (!H) return 0;
+    var n = 0, esc = 0, s = L.qr.s - 2;
+    for (var i = 0; i < 16; i++) for (var j = 0; j < 16; j++) {
+      var p = aplicar(H, L.qr.x + 1 + (i + 0.5) * s / 16, L.qr.y + 1 + (j + 0.5) * s / 16), x = Math.round(p[0]), y = Math.round(p[1]);
+      n++; if (x >= 0 && y >= 0 && x < P.w && y < P.h && P.b[y * P.w + x]) esc++;
     }
-    var escala = Math.hypot(marcas[0][0] - marcas[2][0], marcas[0][1] - marcas[2][1]) / Math.hypot(182, 269);
-    if (!H || menor > 12 * escala) return { ok: false, erro: 'A folha parece dobrada ou muito inclinada. Tente outra foto, de frente.' };
+    return esc / n;
+  }
+  // Recorte "endireitado" da área do QR Code, com contraste reforçado, para uma segunda tentativa de leitura
+  function recorteQR(img, H, tam) {
+    var w = img.width, h = img.height, d = img.data, mg = 5, x0 = L.qr.x - mg, y0 = L.qr.y - mg, s = L.qr.s + 2 * mg;
+    var g = new Float32Array(tam * tam), i, j;
+    for (j = 0; j < tam; j++) for (i = 0; i < tam; i++) {
+      var p = aplicar(H, x0 + (i + 0.5) * s / tam, y0 + (j + 0.5) * s / tam), x = p[0] - 0.5, y = p[1] - 0.5;
+      var xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, v = 255;
+      if (xi >= 0 && yi >= 0 && xi < w - 1 && yi < h - 1) {
+        var k = (yi * w + xi) * 4;
+        var c00 = d[k] * 0.299 + d[k + 1] * 0.587 + d[k + 2] * 0.114, c10 = d[k + 4] * 0.299 + d[k + 5] * 0.587 + d[k + 6] * 0.114;
+        k += w * 4;
+        var c01 = d[k] * 0.299 + d[k + 1] * 0.587 + d[k + 2] * 0.114, c11 = d[k + 4] * 0.299 + d[k + 5] * 0.587 + d[k + 6] * 0.114;
+        v = (c00 * (1 - fx) + c10 * fx) * (1 - fy) + (c01 * (1 - fx) + c11 * fx) * fy;
+      }
+      g[j * tam + i] = v;
+    }
+    var ord = Array.prototype.slice.call(g).sort(function (a, b) { return a - b; });
+    var lo = ord[Math.floor(ord.length * 0.05)], hi = ord[Math.floor(ord.length * 0.95)], amp = Math.max(1, hi - lo);
+    var out = new Uint8ClampedArray(tam * tam * 4);
+    for (i = 0; i < g.length; i++) { var t = (g[i] - lo) / amp * 255; out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = t; out[i * 4 + 3] = 255; }
+    return out;
+  }
+  function lerBolinhas(P, H, prova) {
     var resp = [], alertas = [], niveis = [];
     for (var q = 0; q < prova.questoes; q++) {
       var v = [];
-      for (var a = 0; a < prova.alternativas; a++) { var p = bolinha(q, a); v.push(preenchimento(b, w, h, H, p[0], p[1])); }
+      for (var a = 0; a < prova.alternativas; a++) { var p = bolinha(q, a); v.push(preenchimento(P.b, P.w, P.h, H, p[0], p[1])); }
       var ord = v.map(function (x, i) { return [x, i]; }).sort(function (x, y) { return y[0] - x[0]; });
       var t = ord[0][0], s = ord[1][0], r;
       if (t < 0.3) { r = '-'; if (t >= 0.18) alertas.push(q); }
@@ -334,7 +355,66 @@ body.semnav main{padding-bottom:24px}
       else { r = LETRAS[ord[0][1]]; if (t < 0.42 || s >= 0.2) alertas.push(q); }
       resp.push(r); niveis.push(v.map(function (x) { return Math.round(x * 100) / 100; }));
     }
-    return { ok: true, provaId: cod.provaId, estudanteId: cod.estudanteId, respostas: resp, alertas: alertas, niveis: niveis };
+    return { respostas: resp, alertas: alertas, niveis: niveis };
+  }
+
+  /* Lê uma foto. img = {data (RGBA), width, height}; jsQR = função da biblioteca;
+     buscarProva(provaId) devolve {questoes, alternativas} ou null.
+     Se o QR Code não for lido na foto inteira, tenta de novo num recorte endireitado da área do QR (pelos 4 quadrados pretos).
+     Retorna {ok, erro, semQR, provaId, estudanteId, respostas:[ 'A'..'E' | '-' branco | '*' dupla ], alertas:[índices]} */
+  function lerFolha(img, jsQR, buscarProva) {
+    var w = img.width, h = img.height, P = null, kQR = -1;
+    var qr = jsQR(img.data, w, h, { inversionAttempts: 'attemptBoth' });
+    if (!qr) {
+      P = preparar(img);
+      if (!P.marcas) return { ok: false, semQR: true, erro: 'Não encontrei o QR Code nem os 4 quadrados pretos dos cantos. Fotografe a folha inteira, de frente e com boa luz.' };
+      var Hs = homografias(P.marcas), ordem = [0, 1, 2, 3].map(function (k) { return [manchaQR(P, Hs[k]), k]; }).sort(function (x, y) { return y[0] - x[0]; });
+      for (var o = 0; o < 4 && !qr; o++) {
+        var k = ordem[o][1];
+        if (!Hs[k]) continue;
+        [360, 240].forEach(function (tam) {
+          if (qr) return;
+          var q2 = jsQR(recorteQR(img, Hs[k], tam), tam, tam, { inversionAttempts: 'attemptBoth' });
+          if (q2 && lerCodigo(q2.data)) { qr = q2; kQR = k; }
+        });
+      }
+      if (!qr) return { ok: false, semQR: true, erro: 'Não consegui ler o QR Code desta folha.' };
+    }
+    var cod = lerCodigo(qr.data);
+    if (!cod) return { ok: false, erro: 'Este QR Code não é de uma folha do Corretor EMFAL.' };
+    var prova = buscarProva(cod.provaId);
+    if (!prova) return { ok: false, erro: 'A prova desta folha não foi encontrada no sistema (código ' + cod.provaId + ').', provaId: cod.provaId, estudanteId: cod.estudanteId };
+    if (!P) P = preparar(img);
+    var marcas = P.marcas;
+    if (!marcas) return { ok: false, erro: 'Não encontrei os 4 quadrados pretos dos cantos. Fotografe a folha inteira, sobre uma mesa clara.', provaId: cod.provaId, estudanteId: cod.estudanteId };
+    var H = null;
+    if (kQR >= 0) H = homografias(marcas)[kQR];
+    else {
+      var loc = qr.location, qc = [(loc.topLeftCorner.x + loc.bottomRightCorner.x + loc.topRightCorner.x + loc.bottomLeftCorner.x) / 4,
+        (loc.topLeftCorner.y + loc.bottomRightCorner.y + loc.topRightCorner.y + loc.bottomLeftCorner.y) / 4];
+      var menor = Infinity;
+      homografias(marcas).forEach(function (Hk) {
+        if (!Hk) return;
+        var pq = aplicar(Hk, L.qr.x + L.qr.s / 2, L.qr.y + L.qr.s / 2), d = Math.hypot(pq[0] - qc[0], pq[1] - qc[1]);
+        if (d < menor) { menor = d; H = Hk; }
+      });
+      var escala = Math.hypot(marcas[0][0] - marcas[2][0], marcas[0][1] - marcas[2][1]) / Math.hypot(182, 269);
+      if (!H || menor > 12 * escala) return { ok: false, erro: 'A folha parece dobrada ou muito inclinada. Tente outra foto, de frente.', provaId: cod.provaId, estudanteId: cod.estudanteId };
+    }
+    var r = lerBolinhas(P, H, prova);
+    return { ok: true, provaId: cod.provaId, estudanteId: cod.estudanteId, respostas: r.respostas, alertas: r.alertas, niveis: r.niveis };
+  }
+
+  /* Lê as bolinhas de uma folha já identificada à mão (sem QR Code), usando só os 4 quadrados pretos.
+     A posição da folha (foto girada) é descoberta pela mancha escura do QR Code, mesmo ilegível. */
+  function lerSemQR(img, prova) {
+    var P = preparar(img);
+    if (!P.marcas) return { ok: false, erro: 'Não encontrei os 4 quadrados pretos dos cantos nesta foto.' };
+    var Hs = homografias(P.marcas), best = -1, m = -1;
+    Hs.forEach(function (H, k) { var v = manchaQR(P, H); if (v > m) { m = v; best = k; } });
+    if (m < 0.25) return { ok: false, erro: 'Não consegui saber a posição da folha na foto.' };
+    var r = lerBolinhas(P, Hs[best], prova);
+    return { ok: true, respostas: r.respostas, alertas: r.alertas, niveis: r.niveis };
   }
 
   // gabarito: string; '*' no gabarito = questão anulada (todos ganham o ponto)
@@ -344,7 +424,7 @@ body.semnav main{padding-bottom:24px}
     return { acertos: ac, nota: Math.round(ac * valor / n * 100) / 100 };
   }
 
-  var api = { L: L, LETRAS: LETRAS, bolinha: bolinha, gerarPDF: gerarPDF, lerFolha: lerFolha, corrigir: corrigir, codigoQR: codigoQR, lerCodigo: lerCodigo };
+  var api = { L: L, LETRAS: LETRAS, bolinha: bolinha, gerarPDF: gerarPDF, lerFolha: lerFolha, lerSemQR: lerSemQR, corrigir: corrigir, codigoQR: codigoQR, lerCodigo: lerCodigo };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.OMR = api;
 })(this);
 
@@ -353,7 +433,7 @@ body.semnav main{padding-bottom:24px}
 'use strict';
 var TIPOS = ['Prova parcial', 'Prova mensal', 'Prova trimestral', 'Simulado', 'Outra avaliação'];
 var D = { estudantes: [], provas: [], resultados: [], planilha: '' };
-var aba = 'corrigir', fila = [], seq = 0, rascunho = null, filtroNotas = { prova: '', turma: '' }, folhasSel = { prova: '', turma: '' };
+var aba = 'corrigir', fila = [], seq = 0, seqLote = 0, rascunho = null, filtroNotas = { prova: '', turma: '' }, folhasSel = { prova: '', turma: '' };
 // Servidor: dentro do Google usa google.script.run; publicado fora (GitHub Pages) conversa com o Apps Script por fetch.
 var API_URL = 'https://script.google.com/macros/s/AKfycbzCbPfrmF1AZhXP2xh0Se-mMQUJlWqbTkCZ8doxeNOsn5XHBE-2YMW-M6T4_R3BtBrF/exec';
 var VIA_GAS = !!(window.google && google.script && google.script.run);
@@ -372,10 +452,10 @@ function provaPorId(id) { for (var i = 0; i < D.provas.length; i++) if (D.provas
 function estPorId(id) { for (var i = 0; i < D.estudantes.length; i++) if (D.estudantes[i].id === id) return D.estudantes[i]; return null; }
 function turmasDe(p) { return String(p.turmas || '').split(',').filter(Boolean); }
 function turmas() { var t = {}; D.estudantes.forEach(function (e) { t[e.turma] = (t[e.turma] || 0) + 1; }); return t; }
-function confirmar(msg, sim) {
+function confirmar(msg, sim, nao) {
   return new Promise(function (ok) {
     var m = document.createElement('div'); m.className = 'modal';
-    m.innerHTML = '<div class="card"><p style="margin-top:0">' + esc(msg) + '</p><div class="linha"><button class="btn sec" id="cNao">Cancelar</button><button class="btn" id="cSim">' + esc(sim || 'Confirmar') + '</button></div></div>';
+    m.innerHTML = '<div class="card"><p style="margin-top:0">' + esc(msg) + '</p><div class="linha"><button class="btn sec" id="cNao">' + esc(nao || 'Cancelar') + '</button><button class="btn" id="cSim">' + esc(sim || 'Confirmar') + '</button></div></div>';
     document.body.appendChild(m);
     m.querySelector('#cNao').onclick = function () { m.remove(); ok(false); };
     m.querySelector('#cSim').onclick = function () { m.remove(); ok(true); };
@@ -907,25 +987,36 @@ function telaCorrigir() {
     '<label class="btn sec" for="fotoGal">Escolher fotos</label></div>' +
     '<p class="sub">Folha inteira na foto, de frente, com boa luz e sem sombra forte. Os 4 quadrados pretos precisam aparecer.</p>';
   if (!fila.length) return h + '<div class="vazio">Nenhuma folha lida ainda.</div>';
-  var prontas = fila.filter(function (f) { return f.st === 'ok' && !f.salvo && !f.alertas.length; }).length;
+  var prontas = fila.filter(function (f) { return f.st === 'ok' && !f.salvo && !pend(f); }).length;
   if (prontas) h += '<button class="btn larga" onclick="salvarSemPendencia()">Salvar ' + prontas + ' nota(s) sem pendência</button><div style="height:12px"></div>';
+  h += cardFaltam();
   fila.slice().reverse().forEach(function (f) { h += cardFolha(f); });
   if (fila.some(function (f) { return f.salvo || f.st === 'erro'; })) h += '<button class="btn sec larga" onclick="limparFila()">Limpar lidas e salvas</button>';
   return h;
 }
+function pend(f) { return f.alertas.length + (f.revisar ? 1 : 0); }
+function origem(f) {
+  if (!f.nome) return '';
+  return '<span class="sub" style="font-size:12px">Foto ' + f.pos + ' de ' + f.total + (f.lote > 1 ? ' (envio ' + f.lote + ')' : '') + '  |  ' + esc(f.nome) + '</span>';
+}
 function cardFolha(f) {
-  var img = f.thumb ? '<img class="thumb" src="' + f.thumb + '">' : '';
-  if (f.st === 'lendo') return '<div class="card"><div class="linha">' + img + '<div><b>Lendo folha...</b></div></div></div>';
-  if (f.st === 'erro') return '<div class="card" style="border-color:var(--err)"><div class="linha" style="align-items:flex-start">' + img + '<div><span class="chip err">Não lida</span><p style="margin:6px 0 0">' + esc(f.erro) + '</p></div></div><button class="btn sec peq" style="margin-top:10px" onclick="tirar(' + f.k + ')">Remover</button></div>';
+  var img = f.thumb ? '<img class="thumb clic" src="' + f.thumb + '" onclick="verFoto(' + f.k + ')" title="Ver a foto">' : '';
+  if (f.st === 'lendo') return '<div class="card"><div class="linha">' + img + '<div><b>Lendo folha...</b><br>' + origem(f) + '</div></div></div>';
+  if (f.st === 'erro') return '<div class="card" style="border-color:var(--err)"><div class="linha" style="align-items:flex-start">' + img + '<div><span class="chip err">Não lida</span><p style="margin:6px 0 4px">' + esc(f.erro) + '</p>' + origem(f) + '</div></div>' +
+    '<div class="linha" style="margin-top:10px">' + (f.file ? '<button class="btn sec peq" onclick="verFoto(' + f.k + ')">Ver foto</button><button class="btn peq" onclick="identificar(' + f.k + ')">Identificar estudante</button>' : '') +
+    '<button class="btn perigo peq" onclick="tirar(' + f.k + ')">Remover</button></div></div>';
   var p = f.prova, e = f.est, c = OMR.corrigir(f.resp.join(''), p.gabarito, p.valor);
-  var ant = D.resultados.find(function (r) { return r.provaId === p.id && r.estudanteId === f.estudanteId; });
-  var st = f.salvo ? '<span class="chip ok">Nota salva</span>' : f.alertas.length ? '<span class="chip al">' + f.alertas.length + ' para conferir</span>' : '<span class="chip">Pronta</span>';
+  var ant = notaSalva(f);
+  var np = pend(f);
+  var st = f.salvo ? '<span class="chip ok">Nota salva</span>' : np ? '<span class="chip al">' + (f.alertas.length ? f.alertas.length + ' para conferir' : 'Conferir') + '</span>' : '<span class="chip">Pronta</span>';
+  if (f.manual) st += ' <span class="chip al">Identificada à mão</span>';
   var h = '<div class="card"><div class="linha" style="align-items:flex-start">' + img + '<div style="flex:3"><b>' + esc(e ? e.nome : 'Estudante não encontrado') + '</b><br>' +
     '<span class="sub">' + esc(e ? e.turma : '') + '  |  ' + esc(p.nome) + '</span><br>' + st +
-    (ant && !f.salvo ? ' <span class="chip al">já tinha nota ' + num(ant.nota) + '</span>' : '') + '</div>' +
+    (ant && !f.salvo ? ' <span class="chip al">já tinha nota ' + num(ant.nota) + '</span>' : '') + '<br>' + origem(f) + '</div>' +
     '<div style="text-align:right;flex:1"><div class="nota">' + num(c.nota) + '</div><span class="sub">de ' + num(p.valor) + '<br>' + c.acertos + '/' + p.questoes + ' acertos</span></div></div>';
   if (!e) h += '<p class="sub">Este estudante foi removido do cadastro. A nota ainda pode ser salva.</p>';
-  h += '<details' + (f.alertas.length && !f.salvo ? ' open' : '') + '><summary class="sub" style="margin-top:8px">Ver e ajustar respostas</summary><div class="resp">';
+  if (f.aviso && !f.salvo) h += '<p class="sub" style="color:var(--al)">' + esc(f.aviso) + '</p>';
+  h += '<details' + (np && !f.salvo ? ' open' : '') + '><summary class="sub" style="margin-top:8px">Ver e ajustar respostas</summary><div class="resp">';
   for (var i = 0; i < p.questoes; i++) {
     var r = f.resp[i], g = p.gabarito[i], cls = (g === '*' || r === g) ? 'ok' : 'err';
     if (f.alertas.indexOf(i) >= 0) cls += ' al';
@@ -934,14 +1025,129 @@ function cardFolha(f) {
     h += '<option value="-"' + (r === '-' ? ' selected' : '') + '>Branco</option><option value="*"' + (r === '*' ? ' selected' : '') + '>Dupla</option></select></div>';
   }
   h += '</div></details><div class="linha" style="margin-top:10px">' +
-    (f.alertas.length && !f.salvo ? '<button class="btn sec peq" onclick="conferido(' + f.k + ')">Conferi</button>' : '') +
+    (f.file ? '<button class="btn sec peq" onclick="verFoto(' + f.k + ')">Ver foto</button>' : '') +
+    (np && !f.salvo ? '<button class="btn sec peq" onclick="conferido(' + f.k + ')">Conferi</button>' : '') +
     '<button class="btn peq" onclick="salvarUma(' + f.k + ')">' + (f.salvo ? 'Salvar de novo' : 'Salvar nota') + '</button>' +
     '<button class="btn perigo peq" onclick="tirar(' + f.k + ')">Descartar</button></div></div>';
   return h;
 }
+// Nota que já estava salva na planilha antes desta correção (para não substituir sem avisar)
+function notaSalva(f) { return D.resultados.find(function (r) { return r.provaId === f.prova.id && r.estudanteId === f.estudanteId; }); }
+
+// ---------- quem ainda falta (por prova e turma das folhas lidas) ----------
+function cardFaltam() {
+  var grupos = {}, ordem = [];
+  fila.forEach(function (f) {
+    if (f.st !== 'ok' || !f.est) return;
+    var key = f.prova.id + '|' + f.est.turma;
+    if (!grupos[key]) { grupos[key] = { prova: f.prova, turma: f.est.turma }; ordem.push(key); }
+  });
+  var erros = fila.filter(function (f) { return f.st === 'erro'; }).length;
+  if (!ordem.length && !erros) return '';
+  var h = '<div class="card"><b>Quem ainda falta</b>';
+  ordem.forEach(function (key) {
+    var g = grupos[key], feitos = {};
+    fila.forEach(function (f) { if (f.st === 'ok' && f.prova.id === g.prova.id) feitos[f.estudanteId] = 1; });
+    D.resultados.forEach(function (r) { if (r.provaId === g.prova.id) feitos[r.estudanteId] = 1; });
+    var alunos = D.estudantes.filter(function (e) { return e.turma === g.turma; });
+    var falta = alunos.filter(function (e) { return !feitos[e.id]; });
+    h += '<p style="margin:8px 0 0"><b>' + esc(g.turma) + '</b> <span class="sub">|  ' + esc(g.prova.nome) + '</span><br>' +
+      (falta.length ? '<span class="sub">' + (alunos.length - falta.length) + ' de ' + alunos.length + ' com folha lida ou nota salva. Faltam:</span> ' + esc(falta.map(function (e) { return e.nome; }).join(', ')) + '.'
+        : '<span class="chip ok">Turma completa (' + alunos.length + ' de ' + alunos.length + ')</span>') + '</p>';
+  });
+  if (erros) h += '<p class="sub" style="margin:10px 0 0;color:var(--err)">' + erros + ' foto(s) não lida(s). Em cada uma, toque em <b>Ver foto</b> para ler o nome no cabeçalho e depois em <b>Identificar estudante</b>.</p>';
+  return h + '</div>';
+}
+
+// ---------- ver a foto em tamanho grande ----------
+function verFoto(k) {
+  var f = achar(k); if (!f || !f.file) return;
+  var url = URL.createObjectURL(f.file);
+  var m = document.createElement('div'); m.className = 'modal foto';
+  m.innerHTML = '<div class="card"><div style="margin-bottom:8px">' + origem(f) + '</div>' +
+    '<div class="fotoBox"><img src="' + url + '" alt="Foto da folha"></div>' +
+    '<p class="sub" style="margin:6px 0 0">Toque na foto para aproximar ou afastar.</p>' +
+    '<div class="linha" style="margin-top:10px">' + (f.st === 'erro' ? '<button class="btn" id="fIdent">Identificar estudante</button>' : '') + '<button class="btn sec" id="fFechar">Fechar</button></div></div>';
+  document.body.appendChild(m);
+  function fechar() { m.remove(); URL.revokeObjectURL(url); }
+  var box = m.querySelector('.fotoBox');
+  m.querySelector('img').onclick = function () { box.classList.toggle('zoom'); };
+  m.querySelector('#fFechar').onclick = fechar;
+  m.onclick = function (ev) { if (ev.target === m) fechar(); };
+  var bi = m.querySelector('#fIdent'); if (bi) bi.onclick = function () { fechar(); identificar(k); };
+}
+
+// ---------- identificar à mão uma folha cujo QR Code não foi lido ----------
+function identificar(k) {
+  var f = achar(k); if (!f) return;
+  if (!D.provas.length) return aviso('Nenhuma prova cadastrada.');
+  var ultima = fila.slice().reverse().find(function (o) { return o.st === 'ok' && o.prova; });
+  var sel = { prova: (ultima ? ultima.prova.id : D.provas[0].id), turma: '', est: '' };
+  if (f.dica) { var de = estPorId(f.dica.est); sel.prova = f.dica.prova; if (de) { sel.turma = de.turma; sel.est = de.id; } }
+  var m = document.createElement('div'); m.className = 'modal';
+  document.body.appendChild(m);
+  function turmasDaProva(p) {
+    var t = turmasDe(p); if (!t.length) t = Object.keys(turmas()).sort();
+    return t;
+  }
+  function desenhar() {
+    var p = provaPorId(sel.prova), ts = turmasDaProva(p);
+    if (ts.indexOf(sel.turma) < 0) {
+      var cont = {}; fila.forEach(function (o) { if (o.st === 'ok' && o.est && o.prova.id === p.id) cont[o.est.turma] = (cont[o.est.turma] || 0) + 1; });
+      sel.turma = ts.slice().sort(function (a, b) { return (cont[b] || 0) - (cont[a] || 0); })[0] || '';
+    }
+    var feitos = {}, salvos = {};
+    fila.forEach(function (o) { if (o.st === 'ok' && o.prova.id === p.id) feitos[o.estudanteId] = 1; });
+    D.resultados.forEach(function (r) { if (r.provaId === p.id) salvos[r.estudanteId] = 1; });
+    var alunos = D.estudantes.filter(function (e) { return e.turma === sel.turma; });
+    var faltam = alunos.filter(function (e) { return !feitos[e.id] && !salvos[e.id]; }), outros = alunos.filter(function (e) { return feitos[e.id] || salvos[e.id]; });
+    if (!alunos.some(function (e) { return e.id === sel.est; })) sel.est = faltam.length ? faltam[0].id : '';
+    function op(e) { return '<option value="' + esc(e.id) + '"' + (e.id === sel.est ? ' selected' : '') + '>' + esc(e.nome) + (feitos[e.id] ? ' (já lido)' : salvos[e.id] ? ' (já tem nota)' : '') + '</option>'; }
+    m.innerHTML = '<div class="card"><b>De quem é esta folha?</b>' +
+      (f.thumb ? '<div style="margin-top:8px"><img class="thumb clic" src="' + f.thumb + '" id="iFoto" title="Ver a foto"> <span class="sub">Toque na miniatura para ver o nome no cabeçalho.</span></div>' : '') +
+      '<label class="sub" style="display:block;margin-top:10px">Prova<select id="iProva">' + D.provas.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === sel.prova ? ' selected' : '') + '>' + esc(x.nome) + '</option>'; }).join('') + '</select></label>' +
+      '<label class="sub" style="display:block;margin-top:8px">Turma<select id="iTurma">' + ts.map(function (t) { return '<option' + (t === sel.turma ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></label>' +
+      '<label class="sub" style="display:block;margin-top:8px">Estudante<select id="iEst"><option value="">Escolha...</option>' +
+      (faltam.length ? '<optgroup label="Ainda sem folha lida">' + faltam.map(op).join('') + '</optgroup>' : '') +
+      (outros.length ? '<optgroup label="Já lidos ou com nota">' + outros.map(op).join('') + '</optgroup>' : '') + '</select></label>' +
+      '<div class="linha" style="margin-top:14px"><button class="btn sec" id="iNao">Cancelar</button><button class="btn" id="iSim">Ler as bolinhas</button></div></div>';
+    m.querySelector('#iProva').onchange = function () { sel.prova = this.value; desenhar(); };
+    m.querySelector('#iTurma').onchange = function () { sel.turma = this.value; desenhar(); };
+    m.querySelector('#iEst').onchange = function () { sel.est = this.value; };
+    var fo = m.querySelector('#iFoto'); if (fo) fo.onclick = function () { verFoto(k); };
+    m.querySelector('#iNao').onclick = function () { m.remove(); };
+    m.querySelector('#iSim').onclick = function () {
+      if (!sel.est) return aviso('Escolha o estudante.');
+      var p2 = provaPorId(sel.prova), e2 = estPorId(sel.est);
+      var outra = fila.find(function (o) { return o !== f && o.st === 'ok' && o.prova.id === p2.id && o.estudanteId === e2.id && !o.salvo; });
+      var passo = outra ? confirmar(e2.nome + ' já tem outra folha lida nesta correção. Usar esta foto no lugar da outra?', 'Usar esta') : Promise.resolve(true);
+      passo.then(function (sim) {
+        if (!sim) return;
+        m.remove();
+        if (outra) { outra.st = 'erro'; outra.erro = 'Folha repetida: este estudante foi identificado em outra foto.'; }
+        lerIdentificada(f, p2, e2);
+      });
+    };
+  }
+  desenhar();
+}
+function lerIdentificada(f, p, e) {
+  carga(true, 'Lendo as bolinhas...');
+  carregarImagem(f.file).then(function (im) {
+    var r = OMR.lerSemQR(dadosImagem(im, 1600), p);
+    if (!r.ok && Math.max(im.naturalWidth, im.naturalHeight) > 1800) r = OMR.lerSemQR(dadosImagem(im, 2600), p);
+    f.st = 'ok'; f.erro = ''; f.prova = p; f.estudanteId = e.id; f.est = e; f.manual = true; f.salvo = false;
+    if (r.ok) { f.resp = r.respostas; f.alertas = r.alertas; f.revisar = true; f.aviso = 'Folha identificada à mão: confira as respostas com a foto e toque em Conferi.'; }
+    else {
+      f.resp = []; f.alertas = []; for (var i = 0; i < p.questoes; i++) { f.resp.push('-'); f.alertas.push(i); }
+      f.revisar = true; f.aviso = r.erro + ' Marque as respostas olhando a foto (botão Ver foto) e toque em Conferi.';
+    }
+    carga(false); render();
+  }).catch(function (er) { carga(false); aviso(er.message); });
+}
 function achar(k) { return fila.find(function (f) { return f.k === k; }); }
 function ajustar(k, i, v) { var f = achar(k); f.resp[i] = v; f.alertas = f.alertas.filter(function (x) { return x !== i; }); f.salvo = false; render(); }
-function conferido(k) { achar(k).alertas = []; render(); }
+function conferido(k) { var f = achar(k); f.alertas = []; f.revisar = false; f.aviso = ''; render(); }
 function tirar(k) { fila = fila.filter(function (f) { return f.k !== k; }); render(); }
 function limparFila() { fila = fila.filter(function (f) { return !(f.salvo || f.st === 'erro'); }); render(); }
 function salvarLista(fs) {
@@ -951,11 +1157,27 @@ function salvarLista(fs) {
   });
 }
 function salvarUma(k) {
-  var f = achar(k);
-  if (!f.alertas.length) return salvarLista([f]);
-  confirmar('Ainda há ' + f.alertas.length + ' questão(ões) para conferir. Salvar assim mesmo?', 'Salvar').then(function (s) { if (s) salvarLista([f]); });
+  var f = achar(k), ant = notaSalva(f);
+  var passo = pend(f) ? confirmar('Esta folha ainda tem ' + (f.alertas.length ? f.alertas.length + ' questão(ões) para conferir' : 'respostas para conferir') + '. Salvar assim mesmo?', 'Salvar') : Promise.resolve(true);
+  passo.then(function (s1) {
+    if (!s1) return false;
+    if (ant && !f.salvo) {
+      var c = OMR.corrigir(f.resp.join(''), f.prova.gabarito, f.prova.valor);
+      return confirmar((f.est ? f.est.nome : 'Este estudante') + ' já tem nota ' + num(ant.nota) + ' salva nesta prova. Substituir pela nova nota ' + num(c.nota) + '?', 'Substituir');
+    }
+    return true;
+  }).then(function (s2) { if (s2) salvarLista([f]); });
 }
-function salvarSemPendencia() { salvarLista(fila.filter(function (f) { return f.st === 'ok' && !f.salvo && !f.alertas.length; })); }
+function salvarSemPendencia() {
+  var fs = fila.filter(function (f) { return f.st === 'ok' && !f.salvo && !pend(f); });
+  var comNota = fs.filter(function (f) { return notaSalva(f); });
+  if (!comNota.length) return salvarLista(fs);
+  var nomes = comNota.map(function (f) { return f.est ? f.est.nome : f.estudanteId; }).join(', ');
+  confirmar(comNota.length + ' folha(s) são de estudantes que já têm nota salva nesta prova (' + nomes + '). Substituir essas notas também?', 'Substituir também', 'Não, salvar só as novas').then(function (sub) {
+    var lista = sub ? fs : fs.filter(function (f) { return comNota.indexOf(f) < 0; });
+    if (lista.length) salvarLista(lista); else aviso('Nenhuma nota nova para salvar.');
+  });
+}
 
 function carregarImagem(file) {
   return new Promise(function (ok, ko) {
@@ -963,27 +1185,36 @@ function carregarImagem(file) {
     im.onload = function () { ok(im); }; im.onerror = function () { ko(new Error('Não consegui abrir esta imagem.')); }; im.src = url;
   });
 }
+function dadosImagem(im, max) {
+  var e = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+  var cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * e); cv.height = Math.round(im.naturalHeight * e);
+  var cx = cv.getContext('2d'); cx.drawImage(im, 0, 0, cv.width, cv.height);
+  return cx.getImageData(0, 0, cv.width, cv.height);
+}
 function lerArquivos(files) {
   files = Array.prototype.slice.call(files || []);
   if (!files.length) return;
   ir('corrigir');
-  var cadeia = Promise.resolve();
-  files.forEach(function (file) {
-    var f = { k: ++seq, st: 'lendo', alertas: [] };
+  var cadeia = Promise.resolve(), lote = ++seqLote;
+  files.forEach(function (file, idx) {
+    var f = { k: ++seq, st: 'lendo', alertas: [], file: file, nome: file.name || ('foto ' + (idx + 1)), pos: idx + 1, total: files.length, lote: lote };
     fila.push(f);
     cadeia = cadeia.then(function () {
       render();
       return carregarImagem(file).then(function (im) {
         return new Promise(function (ok) { setTimeout(ok, 30); }).then(function () {
-          var esc1 = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
-          var cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * esc1); cv.height = Math.round(im.naturalHeight * esc1);
-          var cx = cv.getContext('2d'); cx.drawImage(im, 0, 0, cv.width, cv.height);
-          var tb = document.createElement('canvas'), te = 160 / Math.max(cv.width, cv.height); tb.width = cv.width * te; tb.height = cv.height * te;
-          tb.getContext('2d').drawImage(cv, 0, 0, tb.width, tb.height); f.thumb = tb.toDataURL('image/jpeg', 0.7);
-          var r = OMR.lerFolha(cx.getImageData(0, 0, cv.width, cv.height), window.jsQR, provaPorId);
+          var tb = document.createElement('canvas'), te = 160 / Math.max(im.naturalWidth, im.naturalHeight); tb.width = Math.round(im.naturalWidth * te); tb.height = Math.round(im.naturalHeight * te);
+          tb.getContext('2d').drawImage(im, 0, 0, tb.width, tb.height); f.thumb = tb.toDataURL('image/jpeg', 0.7);
+          var r = OMR.lerFolha(dadosImagem(im, 1600), window.jsQR, provaPorId);
+          // 2ª tentativa: foto em resolução maior (o QR Code às vezes some quando a foto é reduzida)
+          if (!r.ok && r.semQR && Math.max(im.naturalWidth, im.naturalHeight) > 1800) {
+            var r2 = OMR.lerFolha(dadosImagem(im, 2600), window.jsQR, provaPorId);
+            if (r2.ok || !r2.semQR) r = r2;
+          }
           if (!r.ok) {
-            f.st = 'erro'; f.erro = r.erro;
+            f.st = 'erro'; f.erro = r.erro; if (r.provaId && provaPorId(r.provaId)) f.dica = { prova: r.provaId, est: r.estudanteId };
             if (r.provaId && !provaPorId(r.provaId)) f.erro += ' Toque em Notas para atualizar os dados e tente de novo.';
+            else if (r.estudanteId && estPorId(r.estudanteId)) f.erro += ' (Folha de ' + estPorId(r.estudanteId).nome + '.)';
             return;
           }
           f.st = 'ok'; f.prova = provaPorId(r.provaId); f.estudanteId = r.estudanteId; f.est = estPorId(r.estudanteId); f.resp = r.respostas; f.alertas = r.alertas;
