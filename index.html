@@ -121,9 +121,21 @@ body.semnav main{padding-bottom:24px}
   };
   var LETRAS = 'ABCDE';
 
-  function bolinha(q, a) {
-    var col = Math.floor(q / L.rows), row = q % L.rows;
-    return [L.colX0 + col * L.colW + L.numW + L.r + a * L.gap, L.rowY0 + row * L.rowH];
+  /* Duas versões de layout da grade:
+     1 = folhas antigas (colunas fixas de 25 questões, alinhadas à esquerda);
+     2 = folha atual (colunas equilibradas e distribuídas na largura, em quadros).
+     O QR Code das folhas novas diz que é a versão 2; folhas antigas continuam sendo lidas como versão 1. */
+  function grade(n, alt, lay) {
+    var cols = Math.max(1, Math.ceil(n / L.rows));
+    if (lay !== 2) return { cols: cols, rows: L.rows, x0: function (k) { return L.colX0 + k * L.colW; } };
+    if (n > 10 && cols < 2) cols = 2;
+    var rows = Math.ceil(n / cols), larg = L.numW + 2 * L.r + (alt - 1) * L.gap + 1, area = 170, esp = (area - cols * larg) / cols;
+    return { cols: cols, rows: rows, larg: larg, x0: function (k) { return 20 + esp / 2 + k * (larg + esp) - 0.5; } };
+  }
+  function bolinha(q, a, G) {
+    G = G || grade(L.maxQ, 5, 1);
+    var col = Math.floor(q / G.rows), row = q % G.rows;
+    return [G.x0(col) + L.numW + L.r + a * L.gap, L.rowY0 + row * L.rowH];
   }
 
   // ===== Geração do PDF das folhas =====
@@ -131,53 +143,100 @@ body.semnav main{padding-bottom:24px}
   // modo: '' (prova igual para todos), 'Q' (questões e alternativas embaralhadas), 'A' (só alternativas embaralhadas)
   function gerarPDF(prova, estudantes, jsPDF, qrcode, modo) {
     var doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
-    var n = prova.questoes, alt = prova.alternativas;
+    var n = prova.questoes, alt = prova.alternativas, G = grade(n, alt, 2);
+    function rotulo(t, x, y) { doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.setTextColor(95); doc.text(t, x, y); doc.setTextColor(0); }
+    function campo(t, x, y, w, tam, negrito) { doc.setFont('helvetica', negrito ? 'bold' : 'normal'); doc.setFontSize(tam); doc.text(cortar(doc, t, w), x, y); }
     estudantes.forEach(function (e, idx) {
       if (idx > 0) doc.addPage();
-      doc.setTextColor(0);
-      doc.setDrawColor(0);
-      doc.setFillColor(0);
-      // Marcas de canto
+      doc.setTextColor(0); doc.setDrawColor(0); doc.setFillColor(0); doc.setLineWidth(0.3);
+      // Marcas de canto (não mudar: a leitura da foto depende delas)
       L.mk.c.forEach(function (c) { doc.rect(c[0] - L.mk.s / 2, c[1] - L.mk.s / 2, L.mk.s, L.mk.s, 'F'); });
+
       // Cabeçalho institucional
       doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
       ['PREFEITURA MUNICIPAL DE BELO HORIZONTE',
         'SECRETARIA MUNICIPAL DE EDUCAÇÃO (SMED-BH)',
         'GERÊNCIA REGIONAL DE EDUCAÇÃO DA PAMPULHA (GERED-PAMPULHA)',
-        'ESCOLA MUNICIPAL FRANCISCA ALVES (EMFAL)'].forEach(function (t, i) { doc.text(t, 24, 24 + i * 3.4); });
-      doc.setFontSize(12); doc.text('FOLHA DE RESPOSTAS', 24, 43);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-      doc.text(cortar(doc, 'Avaliação: ' + prova.nome + ' (' + prova.tipo + ')', 132), 24, 49.5);
-      doc.text('Valor: ' + fmt(prova.valor) + ' pontos    Questões: ' + n + '    Turma: ' + (e.turma || ''), 24, 55);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
-      doc.text(cortar(doc, 'Estudante: ' + e.nome, 132), 24, 62);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-      doc.text('Data: ____/____/______', 24, 68.5);
-      if (modo) { doc.setFont('helvetica', 'bold'); doc.text('Prova individual: marque na ordem da SUA prova', 70, 68.5); doc.setFont('helvetica', 'normal'); }
-      doc.setFontSize(8.5);
-      doc.text('Preencha completamente uma única bolinha por questão, com caneta azul ou preta.', 24, 77);
-      doc.text('Não rasure, não dobre e não escreva perto dos quadrados pretos.', 24, 81);
-      doc.setFontSize(7); doc.setTextColor(90);
-      doc.text('Exemplo correto:', 24, 87.5);
-      doc.setTextColor(0);
-      doc.circle(48, 86.7, 1.8, 'F');
-      // QR Code
-      var q = qrcode(0, 'M'); q.addData(codigoQR(prova.id, e.id, modo)); q.make();
+        'ESCOLA MUNICIPAL FRANCISCA ALVES (EMFAL)'].forEach(function (t, i) { doc.text(t, 22, 24 + i * 3.4); });
+      doc.setFontSize(14); doc.text('FOLHA DE RESPOSTAS', 22, 41.5);
+      doc.setFontSize(9); doc.text(cortar(doc, String(prova.tipo || '').toUpperCase(), 60), 154, 41.5, { align: 'right' });
+
+      // Quadro de identificação
+      doc.setDrawColor(0); doc.setLineWidth(0.35); doc.rect(22, 44, 132, 25.5);
+      doc.setLineWidth(0.2); doc.setDrawColor(110);
+      doc.line(22, 52.5, 154, 52.5); doc.line(22, 61, 154, 61);
+      doc.line(124, 44, 124, 52.5); doc.line(60, 61, 60, 69.5); doc.line(88, 61, 88, 69.5); doc.line(116, 61, 116, 69.5);
+      rotulo('AVALIAÇÃO', 24, 46.6); campo(prova.nome, 24, 50.9, 98, 9.5);
+      rotulo('TURMA', 126, 46.6); campo(e.turma || '', 126, 50.9, 26, 9.5, true);
+      rotulo('ESTUDANTE', 24, 55.1); campo(e.nome, 24, 59.6, 128, 11, true);
+      rotulo('DATA', 24, 63.6); campo('____/____/______', 24, 68, 34, 9);
+      rotulo('VALOR', 62, 63.6); campo(fmt(prova.valor) + ' pontos', 62, 68, 24, 9.5);
+      rotulo('QUESTÕES', 90, 63.6); campo(String(n) + ' (A a ' + LETRAS[alt - 1] + ')', 90, 68, 24, 9.5);
+      rotulo('VERSÃO DA PROVA', 118, 63.6); campo(modo ? 'Individual' : 'Única', 118, 68, 34, 9.5, !!modo);
+
+      // QR Code (identifica prova, estudante e versão; não mudar a posição)
+      doc.setFillColor(0);
+      var q = qrcode(0, 'M'); q.addData(codigoQR(prova.id, e.id, modo, 2)); q.make();
       var m = q.getModuleCount(), ms = L.qr.s / m;
       for (var r = 0; r < m; r++) for (var c = 0; c < m; c++)
         if (q.isDark(r, c)) doc.rect(L.qr.x + c * ms, L.qr.y + r * ms, ms + 0.02, ms + 0.02, 'F');
-      // Grade de bolinhas
-      var cols = Math.ceil(n / L.rows);
-      doc.setFontSize(8); doc.setFont('helvetica', 'bold');
-      for (var k = 0; k < cols; k++) for (var a = 0; a < alt; a++) {
-        var p = bolinha(k * L.rows, a); doc.text(LETRAS[a], p[0], L.rowY0 - 5.5, { align: 'center' });
+
+      // Quadro do professor (ao lado da identificação, abaixo do QR Code)
+      doc.setDrawColor(0); doc.setLineWidth(0.35); doc.rect(158, 52.5, 32, 17);
+      doc.setLineWidth(0.2); doc.setDrawColor(110); doc.line(158, 61, 190, 61);
+      rotulo('ACERTOS', 160, 55.1); rotulo('NOTA', 160, 63.6);
+
+      // Assinatura
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.text('ASSINATURA DO(A) ESTUDANTE:', 22, 74);
+      doc.setDrawColor(0); doc.setLineWidth(0.2); doc.setLineDashPattern([0.6, 0.6], 0); doc.line(67, 74.3, 190, 74.3); doc.setLineDashPattern([], 0);
+
+      // Instruções e exemplo de preenchimento
+      doc.setFillColor(225); doc.rect(22, 76.5, 168, 4, 'F');
+      doc.setDrawColor(0); doc.setLineWidth(0.35); doc.rect(22, 76.5, 168, 13.5);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8); doc.setTextColor(0);
+      doc.text('INSTRUÇÕES PARA O PREENCHIMENTO', 24, 79.4); doc.text('EXEMPLO DE PREENCHIMENTO', 141, 79.4);
+      var ins = [['Use caneta azul ou preta e pinte a bolinha inteira. Marque só UMA alternativa por questão.', false],
+        modo ? ['PROVA INDIVIDUAL: marque na ordem da SUA prova. Duas marcações anulam a questão.', true]
+          : ['Duas marcações ou rasura na mesma questão anulam a questão.', false],
+        ['Não dobre a folha e não escreva perto dos quadrados pretos nem do QR Code.', false]];
+      doc.setFontSize(6.6);
+      ins.forEach(function (t, i) { doc.setFont('helvetica', t[1] ? 'bold' : 'normal'); doc.text(cortar(doc, (i + 1) + '. ' + t[0], 112), 24, 83.4 + i * 2.8); });
+      doc.setDrawColor(110); doc.setLineWidth(0.2); doc.line(138, 80.5, 138, 90);
+      var ye = 85.6;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2); doc.text('Certo', 141, ye + 0.8);
+      doc.setFillColor(0); doc.setDrawColor(0); doc.setLineWidth(0.25); doc.circle(151, ye, 1.5, 'F');
+      doc.text('Errado', 156, ye + 0.8);
+      [166.5, 172.5, 178.5, 184.5].forEach(function (x) { doc.circle(x, ye, 1.5, 'S'); });
+      doc.setLineWidth(0.35);
+      doc.line(165.7, ye + 0.1, 166.3, ye + 0.8); doc.line(166.3, ye + 0.8, 167.5, ye - 1);  // tique
+      doc.line(171.7, ye - 0.8, 173.3, ye + 0.8); doc.line(173.3, ye - 0.8, 171.7, ye + 0.8); // xis
+      doc.circle(178.5, ye, 0.45, 'F');                                                     // ponto
+      doc.triangle(183.1, ye, 185.9, ye, 184.5, ye - 1.45, 'F');                            // meia bolinha
+
+      // Grade de bolinhas, em quadros (um por coluna), com linha a cada 5 questões
+      var top = L.rowY0 - 9, faixa = L.rowY0 - 3.6;
+      for (var k = 0; k < G.cols; k++) {
+        var x0 = G.x0(k), ini = k * G.rows, qtd = Math.min(G.rows, n - ini);
+        if (qtd <= 0) break;
+        var bx = x0 + 0.5, bw = G.larg, fundo = L.rowY0 + (qtd - 0.5) * L.rowH + 0.4;
+        var xn = x0 + L.numW - 0.3; // divisória entre número e bolinhas
+        doc.setFillColor(225); doc.rect(bx, top, bw, faixa - top, 'F');
+        doc.setFillColor(242); doc.rect(bx, faixa, xn - bx, fundo - faixa, 'F');
+        doc.setDrawColor(0); doc.setLineWidth(0.35); doc.rect(bx, top, bw, fundo - top);
+        doc.setLineWidth(0.2); doc.setDrawColor(110);
+        doc.line(bx, faixa, bx + bw, faixa); doc.line(xn, faixa, xn, fundo);
+        doc.setDrawColor(170);
+        for (var g = 5; g < qtd; g += 5) { var yg = L.rowY0 + (g - 0.5) * L.rowH; doc.line(bx, yg, bx + bw, yg); }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(0);
+        doc.text('Nº', x0 + L.numW - 3.6, faixa - 1.5, { align: 'center' });
+        for (var a = 0; a < alt; a++) { var p = bolinha(ini, a, G); doc.text(LETRAS[a], p[0], faixa - 1.5, { align: 'center' }); }
       }
-      doc.setLineWidth(0.3);
+      doc.setDrawColor(0); doc.setLineWidth(0.3);
       for (var i = 0; i < n; i++) {
-        var p0 = bolinha(i, 0);
+        var p0 = bolinha(i, 0, G);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
         doc.text(String(i + 1), p0[0] - L.r - 1.8, p0[1] + 1.1, { align: 'right' });
-        for (var b = 0; b < alt; b++) { var pb = bolinha(i, b); doc.circle(pb[0], pb[1], L.r, 'S'); }
+        for (var b = 0; b < alt; b++) { var pb = bolinha(i, b, G); doc.circle(pb[0], pb[1], L.r, 'S'); }
       }
       doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
       doc.text('Corretor EMFAL  |  ' + prova.id + '  |  ' + e.id + (modo ? '  |  versão ' + modo : ''), 105, 290, { align: 'center' });
@@ -186,12 +245,14 @@ body.semnav main{padding-bottom:24px}
   }
   function cortar(doc, t, w) { while (t.length > 4 && doc.getTextWidth(t) > w) t = t.slice(0, -2); return t; }
   function fmt(v) { return String(Math.round(v * 100) / 100).replace('.', ','); }
-  function codigoQR(p, e, modo) { return 'EMFAL;' + p + ';' + e + (modo ? ';' + modo : ''); }
+  // Folhas antigas: EMFAL;prova;estudante[;modo]. Folhas atuais: EMFAL;prova;estudante;modo;2 (modo pode ser vazio).
+  function codigoQR(p, e, modo, lay) { return 'EMFAL;' + p + ';' + e + (lay === 2 ? ';' + (modo || '') + ';2' : (modo ? ';' + modo : '')); }
   function lerCodigo(t) {
     var s = String(t || '').split(';');
     if (s[0] !== 'EMFAL') return null;
-    if (s.length === 3) return { provaId: s[1], estudanteId: s[2], modo: '' };
-    if (s.length === 4 && (s[3] === 'Q' || s[3] === 'A')) return { provaId: s[1], estudanteId: s[2], modo: s[3] };
+    if (s.length === 3) return { provaId: s[1], estudanteId: s[2], modo: '', lay: 1 };
+    if (s.length === 4 && (s[3] === 'Q' || s[3] === 'A')) return { provaId: s[1], estudanteId: s[2], modo: s[3], lay: 1 };
+    if (s.length === 5 && (s[3] === '' || s[3] === 'Q' || s[3] === 'A') && s[4] === '2') return { provaId: s[1], estudanteId: s[2], modo: s[3], lay: 2 };
     return null;
   }
 
@@ -374,11 +435,11 @@ body.semnav main{padding-bottom:24px}
     for (i = 0; i < g.length; i++) { var t = (g[i] - lo) / amp * 255; out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = t; out[i * 4 + 3] = 255; }
     return out;
   }
-  function lerBolinhas(P, H, prova) {
-    var resp = [], alertas = [], niveis = [];
+  function lerBolinhas(P, H, prova, lay) {
+    var resp = [], alertas = [], niveis = [], G = grade(prova.questoes, prova.alternativas, lay);
     for (var q = 0; q < prova.questoes; q++) {
       var v = [];
-      for (var a = 0; a < prova.alternativas; a++) { var p = bolinha(q, a); v.push(preenchimento(P.b, P.w, P.h, H, p[0], p[1])); }
+      for (var a = 0; a < prova.alternativas; a++) { var p = bolinha(q, a, G); v.push(preenchimento(P.b, P.w, P.h, H, p[0], p[1])); }
       var ord = v.map(function (x, i) { return [x, i]; }).sort(function (x, y) { return y[0] - x[0]; });
       var t = ord[0][0], s = ord[1][0], r;
       if (t < 0.3) { r = '-'; if (t >= 0.18) alertas.push(q); }
@@ -432,8 +493,24 @@ body.semnav main{padding-bottom:24px}
       var escala = Math.hypot(marcas[0][0] - marcas[2][0], marcas[0][1] - marcas[2][1]) / Math.hypot(182, 269);
       if (!H || menor > 12 * escala) return { ok: false, erro: 'A folha parece dobrada ou muito inclinada. Tente outra foto, de frente.', provaId: cod.provaId, estudanteId: cod.estudanteId };
     }
-    var r = lerBolinhas(P, H, prova);
+    var r = lerBolinhas(P, H, prova, cod.lay);
     return { ok: true, provaId: cod.provaId, estudanteId: cod.estudanteId, modo: cod.modo, respostas: r.respostas, alertas: r.alertas, niveis: r.niveis };
+  }
+
+  // Fração escura no anel do contorno das bolinhas (alta quando a grade da versão bate com a folha)
+  function contorno(P, H, prova, lay) {
+    var G = grade(prova.questoes, prova.alternativas, lay), n = 0, esc = 0;
+    for (var q = 0; q < prova.questoes; q++) for (var a = 0; a < prova.alternativas; a++) {
+      var c = bolinha(q, a, G);
+      for (var t = 0; t < 12; t++) {
+        n++;
+        for (var d = -0.25; d <= 0.26; d += 0.25) {
+          var p = aplicar(H, c[0] + (L.r + d) * Math.cos(t * Math.PI / 6), c[1] + (L.r + d) * Math.sin(t * Math.PI / 6)), x = Math.round(p[0]), y = Math.round(p[1]);
+          if (x >= 0 && y >= 0 && x < P.w && y < P.h && P.b[y * P.w + x]) { esc++; break; }
+        }
+      }
+    }
+    return n ? esc / n : 0;
   }
 
   /* Lê as bolinhas de uma folha já identificada à mão (sem QR Code), usando só os 4 quadrados pretos.
@@ -444,7 +521,9 @@ body.semnav main{padding-bottom:24px}
     var Hs = homografias(P.marcas), best = -1, m = -1;
     Hs.forEach(function (H, k) { var v = manchaQR(P, H); if (v > m) { m = v; best = k; } });
     if (m < 0.25) return { ok: false, erro: 'Não consegui saber a posição da folha na foto.' };
-    var r = lerBolinhas(P, Hs[best], prova);
+    // Sem o QR Code, descobre se é folha antiga ou atual pelo contorno impresso das bolinhas
+    var lay = contorno(P, Hs[best], prova, 2) > contorno(P, Hs[best], prova, 1) ? 2 : 1;
+    var r = lerBolinhas(P, Hs[best], prova, lay);
     return { ok: true, respostas: r.respostas, alertas: r.alertas, niveis: r.niveis };
   }
 
@@ -455,7 +534,7 @@ body.semnav main{padding-bottom:24px}
     return { acertos: ac, nota: Math.round(ac * valor / n * 100) / 100 };
   }
 
-  var api = { L: L, LETRAS: LETRAS, bolinha: bolinha, gerarPDF: gerarPDF, lerFolha: lerFolha, lerSemQR: lerSemQR, corrigir: corrigir, codigoQR: codigoQR, lerCodigo: lerCodigo, versao: versao, gabaritoVersao: gabaritoVersao, paraOriginal: paraOriginal };
+  var api = { L: L, LETRAS: LETRAS, grade: grade, bolinha: bolinha, gerarPDF: gerarPDF, lerFolha: lerFolha, lerSemQR: lerSemQR, corrigir: corrigir, codigoQR: codigoQR, lerCodigo: lerCodigo, versao: versao, gabaritoVersao: gabaritoVersao, paraOriginal: paraOriginal };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.OMR = api;
 })(this);
 
