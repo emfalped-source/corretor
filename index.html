@@ -128,7 +128,8 @@ body.semnav main{padding-bottom:24px}
 
   // ===== Geração do PDF das folhas =====
   // prova: {id,nome,tipo,questoes,alternativas,valor}; estudantes: [{id,nome,turma}]
-  function gerarPDF(prova, estudantes, jsPDF, qrcode) {
+  // modo: '' (prova igual para todos), 'Q' (questões e alternativas embaralhadas), 'A' (só alternativas embaralhadas)
+  function gerarPDF(prova, estudantes, jsPDF, qrcode, modo) {
     var doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
     var n = prova.questoes, alt = prova.alternativas;
     estudantes.forEach(function (e, idx) {
@@ -152,6 +153,7 @@ body.semnav main{padding-bottom:24px}
       doc.text(cortar(doc, 'Estudante: ' + e.nome, 132), 24, 62);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
       doc.text('Data: ____/____/______', 24, 68.5);
+      if (modo) { doc.setFont('helvetica', 'bold'); doc.text('Prova individual: marque na ordem da SUA prova', 70, 68.5); doc.setFont('helvetica', 'normal'); }
       doc.setFontSize(8.5);
       doc.text('Preencha completamente uma única bolinha por questão, com caneta azul ou preta.', 24, 77);
       doc.text('Não rasure, não dobre e não escreva perto dos quadrados pretos.', 24, 81);
@@ -160,7 +162,7 @@ body.semnav main{padding-bottom:24px}
       doc.setTextColor(0);
       doc.circle(48, 86.7, 1.8, 'F');
       // QR Code
-      var q = qrcode(0, 'M'); q.addData(codigoQR(prova.id, e.id)); q.make();
+      var q = qrcode(0, 'M'); q.addData(codigoQR(prova.id, e.id, modo)); q.make();
       var m = q.getModuleCount(), ms = L.qr.s / m;
       for (var r = 0; r < m; r++) for (var c = 0; c < m; c++)
         if (q.isDark(r, c)) doc.rect(L.qr.x + c * ms, L.qr.y + r * ms, ms + 0.02, ms + 0.02, 'F');
@@ -178,16 +180,45 @@ body.semnav main{padding-bottom:24px}
         for (var b = 0; b < alt; b++) { var pb = bolinha(i, b); doc.circle(pb[0], pb[1], L.r, 'S'); }
       }
       doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
-      doc.text('Corretor EMFAL  |  ' + prova.id + '  |  ' + e.id, 105, 290, { align: 'center' });
+      doc.text('Corretor EMFAL  |  ' + prova.id + '  |  ' + e.id + (modo ? '  |  versão ' + modo : ''), 105, 290, { align: 'center' });
     });
     return doc;
   }
   function cortar(doc, t, w) { while (t.length > 4 && doc.getTextWidth(t) > w) t = t.slice(0, -2); return t; }
   function fmt(v) { return String(Math.round(v * 100) / 100).replace('.', ','); }
-  function codigoQR(p, e) { return 'EMFAL;' + p + ';' + e; }
+  function codigoQR(p, e, modo) { return 'EMFAL;' + p + ';' + e + (modo ? ';' + modo : ''); }
   function lerCodigo(t) {
     var s = String(t || '').split(';');
-    return s.length === 3 && s[0] === 'EMFAL' ? { provaId: s[1], estudanteId: s[2] } : null;
+    if (s[0] !== 'EMFAL') return null;
+    if (s.length === 3) return { provaId: s[1], estudanteId: s[2], modo: '' };
+    if (s.length === 4 && (s[3] === 'Q' || s[3] === 'A')) return { provaId: s[1], estudanteId: s[2], modo: s[3] };
+    return null;
+  }
+
+  // ===== Prova embaralhada por estudante =====
+  // A ordem de cada estudante sai sempre igual (semente = prova + estudante), então não precisa ser guardada:
+  // na correção, o QR Code diz a prova, o estudante e o modo, e o app refaz a mesma ordem.
+  function semente(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function sorteio(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function misturar(v, r) { for (var i = v.length - 1; i > 0; i--) { var j = Math.floor(r() * (i + 1)), x = v[i]; v[i] = v[j]; v[j] = x; } return v; }
+  // ordem[j] = questão original que aparece na posição j; alt[j][k] = alternativa original que aparece na letra k
+  function versao(prova, estId, modo) {
+    var n = prova.questoes, na = prova.alternativas, r = sorteio(semente(prova.id + '|' + estId)), ordem = [], alt = [], j, k;
+    for (j = 0; j < n; j++) ordem.push(j);
+    if (modo === 'Q') misturar(ordem, r);
+    for (j = 0; j < n; j++) { var a = []; for (k = 0; k < na; k++) a.push(k); if (modo === 'Q' || modo === 'A') misturar(a, r); alt.push(a); }
+    return { modo: modo || '', ordem: ordem, alt: alt };
+  }
+  // gabarito na ordem em que o estudante vê a prova
+  function gabaritoVersao(gab, v) {
+    return v.ordem.map(function (o, j) { var g = gab[o]; if (LETRAS.indexOf(g) < 0) return g; return LETRAS[v.alt[j].indexOf(LETRAS.indexOf(g))]; }).join('');
+  }
+  // respostas da folha (ordem do estudante) -> ordem original da prova, para salvar e comparar com a turma
+  function paraOriginal(resp, v) {
+    var out = [];
+    v.ordem.forEach(function (o, j) { var x = resp[j], k = LETRAS.indexOf(x); out[o] = k >= 0 && k < v.alt[j].length ? LETRAS[v.alt[j][k]] : (x || '-'); });
+    for (var i = 0; i < out.length; i++) if (!out[i]) out[i] = '-';
+    return out.join('');
   }
 
   // ===== Leitura da imagem =====
@@ -402,7 +433,7 @@ body.semnav main{padding-bottom:24px}
       if (!H || menor > 12 * escala) return { ok: false, erro: 'A folha parece dobrada ou muito inclinada. Tente outra foto, de frente.', provaId: cod.provaId, estudanteId: cod.estudanteId };
     }
     var r = lerBolinhas(P, H, prova);
-    return { ok: true, provaId: cod.provaId, estudanteId: cod.estudanteId, respostas: r.respostas, alertas: r.alertas, niveis: r.niveis };
+    return { ok: true, provaId: cod.provaId, estudanteId: cod.estudanteId, modo: cod.modo, respostas: r.respostas, alertas: r.alertas, niveis: r.niveis };
   }
 
   /* Lê as bolinhas de uma folha já identificada à mão (sem QR Code), usando só os 4 quadrados pretos.
@@ -424,7 +455,7 @@ body.semnav main{padding-bottom:24px}
     return { acertos: ac, nota: Math.round(ac * valor / n * 100) / 100 };
   }
 
-  var api = { L: L, LETRAS: LETRAS, bolinha: bolinha, gerarPDF: gerarPDF, lerFolha: lerFolha, lerSemQR: lerSemQR, corrigir: corrigir, codigoQR: codigoQR, lerCodigo: lerCodigo };
+  var api = { L: L, LETRAS: LETRAS, bolinha: bolinha, gerarPDF: gerarPDF, lerFolha: lerFolha, lerSemQR: lerSemQR, corrigir: corrigir, codigoQR: codigoQR, lerCodigo: lerCodigo, versao: versao, gabaritoVersao: gabaritoVersao, paraOriginal: paraOriginal };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.OMR = api;
 })(this);
 
@@ -433,7 +464,7 @@ body.semnav main{padding-bottom:24px}
 'use strict';
 var TIPOS = ['Prova parcial', 'Prova mensal', 'Prova trimestral', 'Simulado', 'Outra avaliação'];
 var D = { estudantes: [], provas: [], resultados: [], planilha: '' };
-var aba = 'corrigir', fila = [], seq = 0, seqLote = 0, rascunho = null, filtroNotas = { prova: '', turma: '' }, folhasSel = { prova: '', turma: '' };
+var aba = 'corrigir', fila = [], seq = 0, seqLote = 0, rascunho = null, filtroNotas = { prova: '', turma: '' }, folhasSel = { prova: '', turma: '', modo: null };
 // Servidor: dentro do Google usa google.script.run; publicado fora (GitHub Pages) conversa com o Apps Script por fetch.
 var API_URL = 'https://script.google.com/macros/s/AKfycbzCbPfrmF1AZhXP2xh0Se-mMQUJlWqbTkCZ8doxeNOsn5XHBE-2YMW-M6T4_R3BtBrF/exec';
 var VIA_GAS = !!(window.google && google.script && google.script.run);
@@ -953,8 +984,10 @@ function telaFolhas() {
   if (!es.length) return h + '<div class="vazio">Esta turma não tem estudantes cadastrados.</div>';
   h += '<div class="card"><div class="linha"><b>' + es.length + ' estudantes</b><button class="btn sec peq" style="flex:none" onclick="marcarTodos()">Marcar/desmarcar todos</button></div><div id="selEst">' +
     es.map(function (e) { return '<label class="chk"><input type="checkbox" value="' + e.id + '" checked>' + esc(e.nome) + '</label>'; }).join('') + '</div></div>' +
-    '<button class="btn larga" onclick="gerarFolhas()">Gerar PDF das folhas</button><div id="pdfOut" style="margin-top:12px"></div>' +
-    '<p class="sub">Imprima em tamanho real (100%), em papel A4, de preferência em impressora a laser. Cada folha tem um QR Code com o nome do estudante.</p>';
+    secProvaNominal(p) +
+    '<button class="btn larga" onclick="gerarFolhas()">Gerar PDF das folhas de respostas</button><div id="pdfOut" style="margin-top:12px"></div>' +
+    '<p class="sub">Imprima em tamanho real (100%), em papel A4, de preferência em impressora a laser. Cada folha tem um QR Code com o nome do estudante' +
+    (folhasSel.modo ? ' e a versão da prova dele. A correção pela foto já usa o gabarito de cada estudante.' : '.') + '</p>';
   return h;
 }
 function marcarTodos() { var cs = document.querySelectorAll('#selEst input'), on = !Array.prototype.every.call(cs, function (c) { return c.checked; }); cs.forEach(function (c) { c.checked = on; }); }
@@ -962,12 +995,14 @@ function gerarFolhas() {
   var p = provaPorId(folhasSel.prova);
   var ids = Array.prototype.filter.call(document.querySelectorAll('#selEst input'), function (c) { return c.checked; }).map(function (c) { return c.value; });
   if (!ids.length) return aviso('Selecione pelo menos um estudante.');
+  if (folhasSel.modo && !docValido(p)) return aviso('Para embaralhar, carregue primeiro o arquivo da prova (Word) e confira se as questões foram encontradas.');
   var es = ids.map(estPorId);
   carga(true, 'Gerando ' + es.length + ' folhas...');
   setTimeout(function () {
     try {
-      var doc = OMR.gerarPDF(p, es, window.jspdf.jsPDF, window.qrcode);
-      var nome = 'Folhas ' + p.nome + ' ' + folhasSel.turma + '.pdf';
+      var doc = OMR.gerarPDF(p, es, window.jspdf.jsPDF, window.qrcode, folhasSel.modo || '');
+      if (folhasSel.modo) guardar('corretor_modo_' + p.id, folhasSel.modo);
+      var nome = 'Folhas ' + p.nome + ' ' + folhasSel.turma + (folhasSel.modo ? ' (embaralhada)' : '') + '.pdf';
       var blob = doc.output('blob'), url = URL.createObjectURL(blob);
       var out = '<div class="card"><b>PDF pronto.</b><div class="linha" style="margin-top:10px"><a class="btn sec" href="' + url + '" download="' + esc(nome) + '">Baixar aqui</a>';
       if (DEMO_MODE) { carga(false); $('#pdfOut').innerHTML = out + '</div><p class="sub">Se o botão não baixar neste modo de teste, use o PDF de exemplo enviado na conversa. Instalado na escola, o PDF vai direto para o Google Drive.</p></div>'; return; }
@@ -979,6 +1014,248 @@ function gerarFolhas() {
       }).catch(function (e) { carga(false); $('#pdfOut').innerHTML = out + '</div><p class="sub">Não consegui salvar no Drive: ' + esc(e.message || e) + '</p></div>'; });
     } catch (e) { carga(false); aviso('Erro ao gerar o PDF: ' + e.message); }
   }, 50);
+}
+
+// ---------- PROVA NOMINAL E EMBARALHADA ----------
+// O professor carrega a prova em Word (.docx) ou cola o texto. O app separa cabeçalho, questões e alternativas,
+// e monta uma prova com o nome de cada estudante, na ordem sorteada para ele (a mesma usada na folha de respostas).
+var PROVA_DOC = {};   // provaId -> {arquivo, cab:[html], qs:[{enun:[html], alts:[html]}], fim:[html]}
+var MODOS = [['', 'Igual para todos'], ['Q', 'Embaralhar questões e alternativas'], ['A', 'Embaralhar só as alternativas']];
+function docDe(p) {
+  if (PROVA_DOC[p.id]) return PROVA_DOC[p.id];
+  try { var d = JSON.parse(pegar('corretor_doc_' + p.id) || 'null'); if (d) PROVA_DOC[p.id] = d; return d; } catch (e) { return null; }
+}
+function problemasDoc(p, d) {
+  var pr = [];
+  if (!d) return ['Nenhum arquivo carregado.'];
+  if (d.qs.length !== p.questoes) pr.push('Encontrei ' + d.qs.length + ' questões, mas a prova está cadastrada com ' + p.questoes + '.');
+  d.qs.forEach(function (q, i) {
+    if (!q.alts.length) pr.push('Questão ' + (i + 1) + ': não achei as alternativas.');
+    else if (q.alts.length !== p.alternativas) pr.push('Questão ' + (i + 1) + ': achei ' + q.alts.length + ' alternativas (a prova tem ' + p.alternativas + ').');
+  });
+  return pr;
+}
+function docValido(p) { return !problemasDoc(p, docDe(p)).length; }
+function secProvaNominal(p) {
+  if (folhasSel.modo == null || folhasSel.modoProva !== p.id) { folhasSel.modo = pegar('corretor_modo_' + p.id) || ''; folhasSel.modoProva = p.id; }
+  var d = docDe(p), pr = problemasDoc(p, d);
+  var h = '<div class="card"><b>Prova com o nome do estudante</b>' +
+    '<p class="sub" style="margin:4px 0 8px">Carregue a prova em Word para imprimir uma prova com o nome de cada estudante. Se escolher embaralhar, cada estudante recebe uma ordem diferente, e a folha de respostas dele sai na mesma ordem.</p>' +
+    '<label>Versão da prova</label><select onchange="folhasSel.modo=this.value;render()">' +
+    MODOS.map(function (m) { return '<option value="' + m[0] + '"' + (m[0] === folhasSel.modo ? ' selected' : '') + '>' + m[1] + '</option>'; }).join('') + '</select>' +
+    (folhasSel.modo === 'Q' ? '<p class="sub" style="margin:4px 0 0">Um texto de apoio que vem logo antes de uma questão acompanha essa questão. Se um mesmo texto serve para várias questões, prefira "Embaralhar só as alternativas".</p>' : '') +
+    '<div class="linha" style="margin-top:10px"><label class="btn sec" for="provaArq">' + (d ? 'Trocar arquivo da prova' : 'Escolher arquivo da prova (.docx)') + '</label>' +
+    '<button class="btn sec" onclick="colarProva()">Colar o texto da prova</button></div>' +
+    '<input type="file" id="provaArq" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="lerProvaArquivo(this.files[0]);this.value=\'\'">';
+  if (d) {
+    h += '<p style="margin:10px 0 0"><b>' + esc(d.arquivo) + '</b>: ' + d.qs.length + ' questões encontradas.</p>';
+    if (pr.length) h += '<div class="sub" style="color:var(--err);margin-top:4px">' + pr.slice(0, 6).map(esc).join('<br>') + (pr.length > 6 ? '<br>...' : '') +
+      '<br>Confira se cada questão começa com o número (1, 2, 3... seguido de ")" ou ".") e cada alternativa com a letra (a), b), c)...).</div>';
+    h += '<div class="linha" style="margin-top:10px"><button class="btn sec peq" onclick="verQuestoes()">Conferir as questões</button>' +
+      '<button class="btn peq" onclick="imprimirProvas()">Provas com nome</button>' +
+      (folhasSel.modo ? '<button class="btn sec peq" onclick="imprimirGabaritos()">Gabarito de cada estudante</button>' : '') + '</div>';
+  } else if (folhasSel.modo) h += '<p class="sub" style="color:var(--err);margin:10px 0 0">Para embaralhar, carregue o arquivo da prova.</p>';
+  return h + '</div>';
+}
+function carregarScript(src) {
+  return new Promise(function (ok, ko) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = function () { ko(new Error('Não consegui carregar o leitor de Word. Verifique a internet.')); }; document.head.appendChild(s); });
+}
+function lerProvaArquivo(file) {
+  if (!file) return;
+  if (!/\.docx$/i.test(file.name)) return aviso('Use um arquivo do Word (.docx). No Google Docs: Arquivo > Fazer download > Microsoft Word (.docx).');
+  var p = provaPorId(folhasSel.prova);
+  carga(true, 'Lendo a prova...');
+  (window.mammoth ? Promise.resolve() : carregarScript('https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js'))
+    .then(function () { return file.arrayBuffer(); })
+    .then(function (buf) { return window.mammoth.convertToHtml({ arrayBuffer: buf }); })
+    .then(function (r) { carga(false); guardarDoc(p, file.name, r.value); })
+    .catch(function (e) { carga(false); aviso('Não consegui ler o arquivo: ' + ((e && e.message) || e)); });
+}
+function colarProva() {
+  var p = provaPorId(folhasSel.prova);
+  var m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = '<div class="card"><b>Colar a prova</b><p class="sub">Copie a prova inteira no Word ou no Google Docs e cole aqui embaixo.</p>' +
+    '<div id="colaBox" contenteditable="true" style="min-height:180px;max-height:50vh;overflow:auto;border:1px solid #ccc;border-radius:8px;padding:8px;background:#fff;color:#000"></div>' +
+    '<div class="linha" style="margin-top:10px"><button class="btn sec" id="cNao">Cancelar</button><button class="btn" id="cSim">Usar este texto</button></div></div>';
+  document.body.appendChild(m);
+  m.querySelector('#colaBox').focus();
+  m.querySelector('#cNao').onclick = function () { m.remove(); };
+  m.querySelector('#cSim').onclick = function () { var html = m.querySelector('#colaBox').innerHTML; m.remove(); guardarDoc(p, 'Texto colado', html); };
+}
+function guardarDoc(p, nome, html) {
+  var d = separarProva(html, p.alternativas);
+  if (!d.qs.length) return aviso('Não encontrei questões numeradas (1, 2, 3...) neste texto.');
+  d.arquivo = nome; PROVA_DOC[p.id] = d;
+  guardar('corretor_doc_' + p.id, JSON.stringify(d));
+  render();
+  var pr = problemasDoc(p, d);
+  aviso(pr.length ? 'Prova lida, mas há pontos para conferir.' : 'Prova lida: ' + d.qs.length + ' questões com ' + p.alternativas + ' alternativas.');
+}
+
+// --- separa a prova em blocos (parágrafos, tabelas, itens de lista) ---
+function limparHtml(box) {
+  Array.prototype.forEach.call(box.querySelectorAll('script,style,meta,link,iframe,object,embed'), function (x) { x.remove(); });
+  Array.prototype.forEach.call(box.querySelectorAll('*'), function (x) {
+    Array.prototype.slice.call(x.attributes).forEach(function (a) { if (/^on/i.test(a.name) || (a.name === 'href' && /^\s*javascript:/i.test(a.value))) x.removeAttribute(a.name); });
+  });
+}
+function blocosDe(html) {
+  var box = document.createElement('div'); box.innerHTML = html; limparHtml(box);
+  var out = [], BLOCO = /^(P|H[1-6]|BLOCKQUOTE|PRE|TABLE|FIGURE|IMG|HR)$/, CONT = /^(DIV|SECTION|ARTICLE|BODY|MAIN|CENTER)$/;
+  function temBloco(el) { return !!el.querySelector('p,div,table,ol,ul,h1,h2,h3,h4,h5,h6,li,blockquote'); }
+  function andar(no, nivel) {
+    var solto = null;
+    Array.prototype.forEach.call(no.childNodes, function (c) {
+      if (c.nodeType === 3 || (c.nodeType === 1 && !BLOCO.test(c.tagName) && !CONT.test(c.tagName) && !/^(OL|UL|BR)$/.test(c.tagName))) {
+        if (c.nodeType === 3 && !c.textContent.trim() && !solto) return;
+        if (!solto) { solto = document.createElement('p'); out.push({ el: solto }); }
+        solto.appendChild(c.cloneNode(true)); return;
+      }
+      if (c.nodeType !== 1) return;
+      if (c.tagName === 'BR') { solto = null; return; }
+      solto = null;
+      if (BLOCO.test(c.tagName)) { out.push({ el: c.cloneNode(true) }); return; }
+      if (CONT.test(c.tagName)) { if (temBloco(c)) andar(c, nivel); else out.push({ el: c.cloneNode(true) }); return; }
+      if (/^(OL|UL)$/.test(c.tagName)) {
+        Array.prototype.forEach.call(c.children, function (li) {
+          if (li.tagName !== 'LI') return;
+          var cp = li.cloneNode(true), sub = [];
+          Array.prototype.forEach.call(cp.querySelectorAll('ol,ul'), function (x) { x.remove(); });
+          var d = document.createElement('div'); d.innerHTML = cp.innerHTML;
+          out.push({ el: d, li: true, nivel: nivel, numerada: c.tagName === 'OL', lista: c });
+          Array.prototype.forEach.call(li.children, function (x) { if (/^(OL|UL)$/.test(x.tagName)) sub.push(x); });
+          sub.forEach(function (x) { var w = document.createElement('div'); w.appendChild(x.cloneNode(true)); andar(w, nivel + 1); });
+        });
+      }
+    });
+  }
+  andar(box, 0);
+  return out.filter(function (b) { return b.el.textContent.trim() || (b.el.querySelector && b.el.querySelector('img')) || b.el.tagName === 'IMG' || b.el.tagName === 'TABLE'; });
+}
+function textoDe(b) { return b.el.textContent.replace(/\s+/g, ' ').trim(); }
+function temImagem(b) { return b.el.tagName === 'IMG' || !!(b.el.querySelector && b.el.querySelector('img,table')) || b.el.tagName === 'TABLE'; }
+// tira os primeiros n caracteres (número da questão ou letra da alternativa), atravessando negrito etc.
+function tirarInicio(el, n) {
+  var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), t;
+  while (n > 0 && (t = w.nextNode())) { var k = Math.min(n, t.data.length); t.data = t.data.slice(k); n -= k; }
+  return el;
+}
+var RX_Q = /^\s*(?:quest[ãa]o\s*)?0*(\d{1,3})\s*(?:[\)\-–—:]|\.(?!\d))\s*/i;
+var RX_ALT = /^\s*\(?([a-eA-E])\s*[\)\-–—]\s*|^\s*([a-eA-E])\.\s+/;
+// várias alternativas na mesma linha: "a) 10   b) 20   c) 30   d) 40"
+function altsNaLinha(b) {
+  if (temImagem(b)) return null;
+  var t = b.el.textContent, rx = /(^|\s)\(?([a-eA-E])\s*\)\s*/g, m, pos = [];
+  while ((m = rx.exec(t))) { var L = m[2].toLowerCase(); if (L.charCodeAt(0) - 97 === pos.length) pos.push({ i: m.index + m[1].length, f: rx.lastIndex }); }
+  if (pos.length < 2) return null;
+  if (t.slice(0, pos[0].i).trim()) return null;
+  return pos.map(function (p, k) { return '<span>' + esc(t.slice(p.f, k + 1 < pos.length ? pos[k + 1].i : t.length).trim()) + '</span>'; });
+}
+// porLista: 0 = números e letras digitados; 1 = listas automáticas do Word (alternativas num nível abaixo);
+// 2 = listas automáticas no mesmo nível (questões e alternativas em listas separadas)
+function separarProva(htmlEntrada, na) {
+  var blocos = blocosDe(htmlEntrada);
+  function montar(porLista) {
+    var cab = [], qs = [], cur = null, espera = [], listaQ = null, listaA = null;
+    blocos.forEach(function (b) {
+      var t = b.el.textContent, m = RX_Q.exec(t), ehQ;
+      if (porLista === 0) ehQ = m && +m[1] === qs.length + 1;
+      else if (porLista === 1) ehQ = b.li && b.numerada && b.nivel === 0;
+      else if (b.li && b.nivel === 0) {
+        var alt = cur && cur.alts.length < na && (cur.alts.length ? b.lista === listaA : true);
+        if (alt) { listaA = b.lista; cur.alts.push(b.el.outerHTML); return; }
+        ehQ = true; listaQ = b.lista;
+      }
+      if (ehQ) {
+        var el = b.el.cloneNode(true); if (porLista === 0 && m) tirarInicio(el, m[0].length);
+        cur = { enun: espera.concat([el.outerHTML]), alts: [] }; espera = []; qs.push(cur); return;
+      }
+      if (!cur) { cab.push(b.el.outerHTML); return; }
+      var linha = altsNaLinha(b);
+      if (linha && !cur.alts.length) { cur.alts = cur.alts.concat(linha); return; }
+      var a = RX_ALT.exec(t), letra = a ? (a[1] || a[2]).toLowerCase() : '';
+      var ehAlt = (a && letra.charCodeAt(0) - 97 === cur.alts.length) || (porLista && b.li && b.nivel >= 1);
+      if (ehAlt) {
+        var ea = b.el.cloneNode(true); if (a && letra.charCodeAt(0) - 97 === cur.alts.length) tirarInicio(ea, a[0].length);
+        cur.alts.push(ea.outerHTML); return;
+      }
+      if (cur.alts.length) {
+        // imagem logo depois de uma alternativa faz parte dela; texto longo é apoio da próxima questão
+        if (temImagem(b) && !textoDe(b)) cur.alts[cur.alts.length - 1] += b.el.outerHTML;
+        else espera.push(b.el.outerHTML);
+        return;
+      }
+      cur.enun.push(b.el.outerHTML);
+    });
+    return { cab: cab, qs: qs, fim: espera };
+  }
+  function nota(r) { return r.qs.filter(function (q) { return q.alts.length === na; }).length * 2 - (r.qs.length ? 0 : 1000) + (r.qs.every(function (q) { return q.alts.length; }) ? 1 : 0); }
+  var tent = [montar(0), montar(1), montar(2)];
+  tent.sort(function (x, y) { return nota(y) - nota(x); });
+  return tent[0];
+}
+
+// --- conferência, impressão das provas e dos gabaritos ---
+var CSS_PROVA = '@page{size:A4;margin:13mm 14mm}body{font-family:Calibri,Carlito,Arial,sans-serif;font-size:11.5pt;color:#000;margin:0}' +
+  '.barra{position:sticky;top:0;background:#1f4e79;color:#fff;padding:10px;font-family:Arial,sans-serif;font-size:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}' +
+  '.barra button{font-size:15px;padding:8px 16px;border:0;border-radius:6px;cursor:pointer}' +
+  '.folha{padding:6mm 0}.folha+.folha{break-before:page;page-break-before:always}' +
+  '.inst{font-size:8.5pt;font-weight:bold;line-height:1.3}.tit{font-size:13pt;font-weight:bold;margin:6px 0 2px}' +
+  '.id{border:1px solid #000;padding:6px 8px;margin:6px 0 10px;font-size:11pt}.id b{font-size:12pt}.aviso{font-size:9.5pt;margin-top:3px}' +
+  '.q{margin:12px 0;break-inside:avoid;page-break-inside:avoid}.q>.n{font-weight:bold}.q p{margin:3px 0}.alt{margin:3px 0 3px 18px;display:flex;gap:6px}.alt p{margin:0}' +
+  'img{max-width:100%;height:auto}table{border-collapse:collapse;max-width:100%}td,th{border:1px solid #000;padding:3px 5px;vertical-align:top}' +
+  '@media print{.barra{display:none}.folha{padding:0}}';
+function abrirJanela(titulo, corpo, dica) {
+  var pagina = '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(titulo) + '</title><style>' + CSS_PROVA + '</style></head><body>' +
+    '<div class="barra"><button onclick="window.print()">Imprimir ou salvar em PDF</button><span>' + esc(dica || '') + '</span></div>' + corpo + '</body></html>';
+  var w = window.open('', '_blank');
+  if (w) { w.document.open(); w.document.write(pagina); w.document.close(); return; }
+  var url = URL.createObjectURL(new Blob([pagina], { type: 'text/html' }));
+  $('#pdfOut').innerHTML = '<div class="card"><a class="btn" href="' + url + '" download="' + esc(titulo) + '.html">Baixar ' + esc(titulo) + '</a><p class="sub">Abra o arquivo baixado e use Imprimir.</p></div>';
+}
+function cabecalhoProva(p, e, modo) {
+  return '<div class="inst">PREFEITURA MUNICIPAL DE BELO HORIZONTE<br>SECRETARIA MUNICIPAL DE EDUCAÇÃO (SMED-BH)<br>GERÊNCIA REGIONAL DE EDUCAÇÃO DA PAMPULHA (GERED-PAMPULHA)<br>ESCOLA MUNICIPAL FRANCISCA ALVES (EMFAL)</div>' +
+    '<div class="tit">' + esc(p.nome) + ' (' + esc(p.tipo) + ')</div>' +
+    '<div class="id">Estudante: <b>' + esc(e ? e.nome : '______________________________________________') + '</b><br>Turma: ' + esc(e ? e.turma : '________') +
+    ' &nbsp;&nbsp; Data: ____/____/______ &nbsp;&nbsp; Valor: ' + num(p.valor) + ' pontos' +
+    (modo ? '<div class="aviso"><b>Prova individual.</b> Marque as respostas na folha de respostas com o seu nome, na ordem desta prova.</div>' : '') + '</div>';
+}
+function corpoProva(p, d, e, modo) {
+  var v = OMR.versao(p, e ? e.id : '', modo), h = '<section class="folha">' + cabecalhoProva(p, e, modo) + d.cab.join('');
+  v.ordem.forEach(function (o, j) {
+    var q = d.qs[o], ordemAlt = modo ? v.alt[j] : q.alts.map(function (x, k) { return k; });
+    var num1 = '<b>' + (j + 1) + ')</b> ', en = q.enun.slice();
+    if (/^<(p|div|h\d)[\s>]/i.test(en[0] || '')) en[0] = en[0].replace('>', '>' + num1); else en.unshift('<p>' + num1 + '</p>');
+    h += '<div class="q">' + en.join('') +
+      ordemAlt.map(function (oa, k) { return '<div class="alt"><b>' + 'abcde'[k] + ')</b><div>' + (q.alts[oa] || '') + '</div></div>'; }).join('') + '</div>';
+  });
+  return h + d.fim.join('') + '</section>';
+}
+function estudantesMarcados() {
+  return Array.prototype.filter.call(document.querySelectorAll('#selEst input'), function (c) { return c.checked; }).map(function (c) { return estPorId(c.value); }).filter(Boolean);
+}
+function verQuestoes() {
+  var p = provaPorId(folhasSel.prova), d = docDe(p);
+  abrirJanela('Conferência - ' + p.nome, corpoProva(p, d, null, ''), 'Conferência: a prova como o app entendeu, na ordem original. Confira se cada questão tem o enunciado e as alternativas certas.');
+}
+function imprimirProvas() {
+  var p = provaPorId(folhasSel.prova), d = docDe(p), modo = folhasSel.modo || '', es = estudantesMarcados();
+  if (!es.length) return aviso('Selecione pelo menos um estudante.');
+  if (modo && !docValido(p)) return aviso('Antes de embaralhar, resolva os pontos em vermelho da prova carregada.');
+  if (modo) guardar('corretor_modo_' + p.id, modo);
+  abrirJanela('Provas ' + p.nome + ' ' + folhasSel.turma, es.map(function (e) { return corpoProva(p, d, e, modo); }).join(''),
+    es.length + ' provas, uma por estudante, na mesma ordem das folhas de respostas.' + (modo ? ' Gere também as folhas de respostas com esta mesma versão.' : ''));
+}
+function imprimirGabaritos() {
+  var p = provaPorId(folhasSel.prova), modo = folhasSel.modo || '', es = estudantesMarcados();
+  if (!es.length) return aviso('Selecione pelo menos um estudante.');
+  var linhas = es.map(function (e) {
+    var g = OMR.gabaritoVersao(p.gabarito, OMR.versao(p, e.id, modo)).replace(/\*/g, '-');
+    return '<tr><td>' + esc(e.nome) + '</td><td style="font-family:Consolas,monospace;letter-spacing:1px">' + g.replace(/(.{5})(?=.)/g, '$1 ') + '</td></tr>';
+  }).join('');
+  abrirJanela('Gabaritos ' + p.nome + ' ' + folhasSel.turma, '<section class="folha">' + cabecalhoProva(p, { nome: 'Gabarito de cada estudante', turma: folhasSel.turma }, '') +
+    '<table style="width:100%"><tr><th style="text-align:left">Estudante</th><th style="text-align:left">Gabarito (questão 1 em diante, de 5 em 5; "-" = anulada)</th></tr>' + linhas + '</table></section>',
+    'Uso do professor. A correção pela foto já aplica estes gabaritos sozinha.');
 }
 
 // ---------- CORRIGIR ----------
@@ -1005,11 +1282,12 @@ function cardFolha(f) {
   if (f.st === 'erro') return '<div class="card" style="border-color:var(--err)"><div class="linha" style="align-items:flex-start">' + img + '<div><span class="chip err">Não lida</span><p style="margin:6px 0 4px">' + esc(f.erro) + '</p>' + origem(f) + '</div></div>' +
     '<div class="linha" style="margin-top:10px">' + (f.file ? '<button class="btn sec peq" onclick="verFoto(' + f.k + ')">Ver foto</button><button class="btn peq" onclick="identificar(' + f.k + ')">Identificar estudante</button>' : '') +
     '<button class="btn perigo peq" onclick="tirar(' + f.k + ')">Remover</button></div></div>';
-  var p = f.prova, e = f.est, c = OMR.corrigir(f.resp.join(''), p.gabarito, p.valor);
+  var p = f.prova, e = f.est, c = OMR.corrigir(f.resp.join(''), f.gab || p.gabarito, p.valor);
   var ant = notaSalva(f);
   var np = pend(f);
   var st = f.salvo ? '<span class="chip ok">Nota salva</span>' : np ? '<span class="chip al">' + (f.alertas.length ? f.alertas.length + ' para conferir' : 'Conferir') + '</span>' : '<span class="chip">Pronta</span>';
   if (f.manual) st += ' <span class="chip al">Identificada à mão</span>';
+  if (f.modo) st += ' <span class="chip">Prova embaralhada</span>';
   var h = '<div class="card"><div class="linha" style="align-items:flex-start">' + img + '<div style="flex:3"><b>' + esc(e ? e.nome : 'Estudante não encontrado') + '</b><br>' +
     '<span class="sub">' + esc(e ? e.turma : '') + '  |  ' + esc(p.nome) + '</span><br>' + st +
     (ant && !f.salvo ? ' <span class="chip al">já tinha nota ' + num(ant.nota) + '</span>' : '') + '<br>' + origem(f) + '</div>' +
@@ -1018,7 +1296,7 @@ function cardFolha(f) {
   if (f.aviso && !f.salvo) h += '<p class="sub" style="color:var(--al)">' + esc(f.aviso) + '</p>';
   h += '<details' + (np && !f.salvo ? ' open' : '') + '><summary class="sub" style="margin-top:8px">Ver e ajustar respostas</summary><div class="resp">';
   for (var i = 0; i < p.questoes; i++) {
-    var r = f.resp[i], g = p.gabarito[i], cls = (g === '*' || r === g) ? 'ok' : 'err';
+    var r = f.resp[i], g = (f.gab || p.gabarito)[i], cls = (g === '*' || r === g) ? 'ok' : 'err';
     if (f.alertas.indexOf(i) >= 0) cls += ' al';
     h += '<div class="' + cls + '"><b>' + (i + 1) + '</b> <span class="sub">(' + (g === '*' ? 'anul.' : g) + ')</span><select onchange="ajustar(' + f.k + ',' + i + ',this.value)">';
     for (var a = 0; a < p.alternativas; a++) h += '<option' + (r === OMR.LETRAS[a] ? ' selected' : '') + '>' + OMR.LETRAS[a] + '</option>';
@@ -1082,7 +1360,7 @@ function identificar(k) {
   var f = achar(k); if (!f) return;
   if (!D.provas.length) return aviso('Nenhuma prova cadastrada.');
   var ultima = fila.slice().reverse().find(function (o) { return o.st === 'ok' && o.prova; });
-  var sel = { prova: (ultima ? ultima.prova.id : D.provas[0].id), turma: '', est: '' };
+  var sel = { prova: (ultima ? ultima.prova.id : D.provas[0].id), turma: '', est: '', modo: null };
   if (f.dica) { var de = estPorId(f.dica.est); sel.prova = f.dica.prova; if (de) { sel.turma = de.turma; sel.est = de.id; } }
   var m = document.createElement('div'); m.className = 'modal';
   document.body.appendChild(m);
@@ -1092,6 +1370,10 @@ function identificar(k) {
   }
   function desenhar() {
     var p = provaPorId(sel.prova), ts = turmasDaProva(p);
+    if (sel.modo == null) {
+      var ult = fila.slice().reverse().find(function (o) { return o.st === 'ok' && o.prova && o.prova.id === p.id; });
+      sel.modo = ult ? (ult.modo || '') : (pegar('corretor_modo_' + p.id) || '');
+    }
     if (ts.indexOf(sel.turma) < 0) {
       var cont = {}; fila.forEach(function (o) { if (o.st === 'ok' && o.est && o.prova.id === p.id) cont[o.est.turma] = (cont[o.est.turma] || 0) + 1; });
       sel.turma = ts.slice().sort(function (a, b) { return (cont[b] || 0) - (cont[a] || 0); })[0] || '';
@@ -1110,8 +1392,12 @@ function identificar(k) {
       '<label class="sub" style="display:block;margin-top:8px">Estudante<select id="iEst"><option value="">Escolha...</option>' +
       (faltam.length ? '<optgroup label="Ainda sem folha lida">' + faltam.map(op).join('') + '</optgroup>' : '') +
       (outros.length ? '<optgroup label="Já lidos ou com nota">' + outros.map(op).join('') + '</optgroup>' : '') + '</select></label>' +
+      '<label class="sub" style="display:block;margin-top:8px">Versão da folha<select id="iModo">' +
+      [['', 'Prova igual para todos'], ['Q', 'Embaralhada (questões e alternativas)'], ['A', 'Embaralhada (só alternativas)']].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === sel.modo ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+      '</select></label><p class="sub" style="margin:4px 0 0">A folha de prova embaralhada tem a frase "Prova individual" no cabeçalho.</p>' +
       '<div class="linha" style="margin-top:14px"><button class="btn sec" id="iNao">Cancelar</button><button class="btn" id="iSim">Ler as bolinhas</button></div></div>';
-    m.querySelector('#iProva').onchange = function () { sel.prova = this.value; desenhar(); };
+    m.querySelector('#iModo').onchange = function () { sel.modo = this.value; };
+    m.querySelector('#iProva').onchange = function () { sel.prova = this.value; sel.modo = null; desenhar(); };
     m.querySelector('#iTurma').onchange = function () { sel.turma = this.value; desenhar(); };
     m.querySelector('#iEst').onchange = function () { sel.est = this.value; };
     var fo = m.querySelector('#iFoto'); if (fo) fo.onclick = function () { verFoto(k); };
@@ -1125,18 +1411,18 @@ function identificar(k) {
         if (!sim) return;
         m.remove();
         if (outra) { outra.st = 'erro'; outra.erro = 'Folha repetida: este estudante foi identificado em outra foto.'; }
-        lerIdentificada(f, p2, e2);
+        lerIdentificada(f, p2, e2, sel.modo || '');
       });
     };
   }
   desenhar();
 }
-function lerIdentificada(f, p, e) {
+function lerIdentificada(f, p, e, modo) {
   carga(true, 'Lendo as bolinhas...');
   carregarImagem(f.file).then(function (im) {
     var r = OMR.lerSemQR(dadosImagem(im, 1600), p);
     if (!r.ok && Math.max(im.naturalWidth, im.naturalHeight) > 1800) r = OMR.lerSemQR(dadosImagem(im, 2600), p);
-    f.st = 'ok'; f.erro = ''; f.prova = p; f.estudanteId = e.id; f.est = e; f.manual = true; f.salvo = false;
+    f.st = 'ok'; f.erro = ''; f.prova = p; f.estudanteId = e.id; f.est = e; f.manual = true; f.salvo = false; f.modo = modo || ''; definirVersao(f);
     if (r.ok) { f.resp = r.respostas; f.alertas = r.alertas; f.revisar = true; f.aviso = 'Folha identificada à mão: confira as respostas com a foto e toque em Conferi.'; }
     else {
       f.resp = []; f.alertas = []; for (var i = 0; i < p.questoes; i++) { f.resp.push('-'); f.alertas.push(i); }
@@ -1145,13 +1431,18 @@ function lerIdentificada(f, p, e) {
     carga(false); render();
   }).catch(function (er) { carga(false); aviso(er.message); });
 }
+// Prova embaralhada: refaz a ordem do estudante para corrigir pelo gabarito dele
+function definirVersao(f) {
+  f.v = f.modo ? OMR.versao(f.prova, f.estudanteId, f.modo) : null;
+  f.gab = f.v ? OMR.gabaritoVersao(f.prova.gabarito, f.v) : f.prova.gabarito;
+}
 function achar(k) { return fila.find(function (f) { return f.k === k; }); }
 function ajustar(k, i, v) { var f = achar(k); f.resp[i] = v; f.alertas = f.alertas.filter(function (x) { return x !== i; }); f.salvo = false; render(); }
 function conferido(k) { var f = achar(k); f.alertas = []; f.revisar = false; f.aviso = ''; render(); }
 function tirar(k) { fila = fila.filter(function (f) { return f.k !== k; }); render(); }
 function limparFila() { fila = fila.filter(function (f) { return !(f.salvo || f.st === 'erro'); }); render(); }
 function salvarLista(fs) {
-  var lista = fs.map(function (f) { return { provaId: f.prova.id, estudanteId: f.estudanteId, respostas: f.resp.join('') }; });
+  var lista = fs.map(function (f) { return { provaId: f.prova.id, estudanteId: f.estudanteId, respostas: f.v ? OMR.paraOriginal(f.resp, f.v) : f.resp.join('') }; });
   return chamar('Salvando ' + lista.length + ' nota(s)...', 'salvarResultados', lista).then(function () {
     fs.forEach(function (f) { f.salvo = true; f.alertas = []; }); aviso(lista.length + ' nota(s) salva(s).'); render();
   });
@@ -1162,7 +1453,7 @@ function salvarUma(k) {
   passo.then(function (s1) {
     if (!s1) return false;
     if (ant && !f.salvo) {
-      var c = OMR.corrigir(f.resp.join(''), f.prova.gabarito, f.prova.valor);
+      var c = OMR.corrigir(f.resp.join(''), f.gab || f.prova.gabarito, f.prova.valor);
       return confirmar((f.est ? f.est.nome : 'Este estudante') + ' já tem nota ' + num(ant.nota) + ' salva nesta prova. Substituir pela nova nota ' + num(c.nota) + '?', 'Substituir');
     }
     return true;
@@ -1218,6 +1509,7 @@ function lerArquivos(files) {
             return;
           }
           f.st = 'ok'; f.prova = provaPorId(r.provaId); f.estudanteId = r.estudanteId; f.est = estPorId(r.estudanteId); f.resp = r.respostas; f.alertas = r.alertas;
+          f.modo = r.modo || ''; definirVersao(f); if (f.modo) guardar('corretor_modo_' + f.prova.id, f.modo);
           fila.forEach(function (o) { if (o !== f && o.st === 'ok' && o.prova.id === f.prova.id && o.estudanteId === f.estudanteId && !o.salvo) o.st = 'erro', o.erro = 'Folha repetida: este estudante foi lido de novo mais abaixo.'; });
         });
       }).catch(function (e) { f.st = 'erro'; f.erro = e.message; });
