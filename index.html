@@ -1649,6 +1649,13 @@ function telaNotas() {
 function atualizar() { chamar('Atualizando...', 'carregar').then(render); }
 
 // ---------- início ----------
+// Atalho usado pela aba Configurações do Super App EMFAL: #cadastros (professores e senhas) ou #turmas (turmas e estudantes)
+function abrirPeloEndereco() {
+  var h = location.hash.slice(1);
+  if ((h === 'cadastros' || h === 'turmas') && ehCoord()) { aba = 'turmas'; subCad = h === 'turmas' ? 'turmas' : 'professores'; }
+}
+window.addEventListener('hashchange', function () { abrirPeloEndereco(); render(); });
+abrirPeloEndereco();
 render();
 if (SESS) {
   chamar('Carregando dados da escola...', 'carregar').then(render).catch(function () { render(); });
