@@ -449,9 +449,10 @@ html,body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif
       for (var a = 0; a < prova.alternativas; a++) { var p = bolinha(q, a, G); v.push(preenchimento(P.b, P.w, P.h, H, p[0], p[1])); }
       var ord = v.map(function (x, i) { return [x, i]; }).sort(function (x, y) { return y[0] - x[0]; });
       var t = ord[0][0], s = ord[1][0], r;
-      if (t < 0.3) { r = '-'; if (t >= 0.18) alertas.push(q); }
+      // Só vai para "conferir" o que não teve letra lida: branco ou dupla marcação (anulada). Letra lida não pede conferência.
+      if (t < 0.3) { r = '-'; alertas.push(q); }
       else if (s >= 0.3 && s >= 0.5 * t) { r = '*'; alertas.push(q); }
-      else { r = LETRAS[ord[0][1]]; if (t < 0.42 || s >= 0.2) alertas.push(q); }
+      else { r = LETRAS[ord[0][1]]; }
       resp.push(r); niveis.push(v.map(function (x) { return Math.round(x * 100) / 100; }));
     }
     return { respostas: resp, alertas: alertas, niveis: niveis };
@@ -1371,7 +1372,7 @@ function cardFolha(f) {
   var p = f.prova, e = f.est, c = OMR.corrigir(f.resp.join(''), f.gab || p.gabarito, p.valor);
   var ant = notaSalva(f);
   var np = pend(f);
-  var st = f.salvo ? '<span class="chip ok">Nota salva</span>' : np ? '<span class="chip al">' + (f.alertas.length ? f.alertas.length + ' para conferir' : 'Conferir') + '</span>' : '<span class="chip">Pronta</span>';
+  var st = f.salvo ? '<span class="chip ok">Nota salva</span>' : np ? '<span class="chip al">' + (f.alertas.length ? f.alertas.length + ' em branco/anulada' + (f.alertas.length > 1 ? 's' : '') + ': conferir' : 'Conferir') + '</span>' : '<span class="chip">Pronta</span>';
   if (f.manual) st += ' <span class="chip al">Identificada à mão</span>';
   if (f.modo) st += ' <span class="chip">Prova embaralhada</span>';
   var h = '<div class="card"><div class="linha" style="align-items:flex-start">' + img + '<div style="flex:3"><b>' + esc(e ? e.nome : 'Estudante não encontrado') + '</b><br>' +
@@ -1380,6 +1381,7 @@ function cardFolha(f) {
     '<div style="text-align:right;flex:1"><div class="nota">' + num(c.nota) + '</div><span class="sub">de ' + num(p.valor) + '<br>' + c.acertos + '/' + p.questoes + ' acertos</span></div></div>';
   if (!e) h += '<p class="sub">Este estudante foi removido do cadastro. A nota ainda pode ser salva.</p>';
   if (f.aviso && !f.salvo) h += '<p class="sub" style="color:var(--al)">' + esc(f.aviso) + '</p>';
+  if (!f.salvo) h += alertaBrancos(f);
   h += '<details' + (np && !f.salvo ? ' open' : '') + '><summary class="sub" style="margin-top:8px">Ver e ajustar respostas</summary><div class="resp">';
   for (var i = 0; i < p.questoes; i++) {
     var r = f.resp[i], g = (f.gab || p.gabarito)[i], cls = (g === '*' || r === g) ? 'ok' : 'err';
@@ -1394,6 +1396,21 @@ function cardFolha(f) {
     '<button class="btn peq" onclick="salvarUma(' + f.k + ')">' + (f.salvo ? 'Salvar de novo' : 'Salvar nota') + '</button>' +
     '<button class="btn perigo peq" onclick="tirar(' + f.k + ')">Descartar</button></div></div>';
   return h;
+}
+// Aviso destacado: questões em branco ou com dupla marcação ainda não conferidas
+function alertaBrancos(f) {
+  var br = [], du = [];
+  f.alertas.forEach(function (i) { if (f.resp[i] === '-') br.push(i + 1); else if (f.resp[i] === '*') du.push(i + 1); });
+  if (!br.length && !du.length) return '';
+  if (f.manual && br.length === f.resp.length) return ''; // leitura à mão falhou: o aviso de cima já explica
+  var lista = function (a) { return a.length > 1 ? a.slice(0, -1).join(', ') + ' e ' + a[a.length - 1] : String(a[0]); };
+  var partes = [];
+  if (br.length) partes.push((br.length > 1 ? 'Questões ' : 'Questão ') + lista(br) + (br.length > 1 ? ' ficaram EM BRANCO' : ' ficou EM BRANCO'));
+  if (du.length) partes.push((du.length > 1 ? 'questões ' : 'questão ') + lista(du) + ' com DUPLA MARCAÇÃO (anulada' + (du.length > 1 ? 's' : '') + ')');
+  return '<div style="margin-top:8px;padding:10px 12px;border:2px solid var(--al);border-left-width:6px;border-radius:8px;background:var(--alf);color:var(--txt)">' +
+    '<b style="color:var(--al)">⚠ ATENÇÃO, PROFESSOR(A): confira na prova do estudante</b><br>' +
+    partes.join('; ') + '. O app pode não ter lido uma marcação fraca ou apagada. Pegue a folha de respostas de ' + esc(f.est ? f.est.nome : 'este estudante') +
+    ' e confira essas questões no papel: se houver resposta, escolha a letra abaixo; se estiver mesmo em branco ou dupla, toque em Conferi.</div>';
 }
 // Nota que já estava salva na planilha antes desta correção (para não substituir sem avisar)
 function notaSalva(f) { return D.resultados.find(function (r) { return r.provaId === f.prova.id && r.estudanteId === f.estudanteId; }); }
@@ -1535,7 +1552,7 @@ function salvarLista(fs) {
 }
 function salvarUma(k) {
   var f = achar(k), ant = notaSalva(f);
-  var passo = pend(f) ? confirmar('Esta folha ainda tem ' + (f.alertas.length ? f.alertas.length + ' questão(ões) para conferir' : 'respostas para conferir') + '. Salvar assim mesmo?', 'Salvar') : Promise.resolve(true);
+  var passo = pend(f) ? confirmar('Esta folha ainda tem ' + (f.alertas.length ? f.alertas.length + ' questão(ões) em branco ou anulada(s) que ainda não foram conferidas na prova do estudante' : 'respostas para conferir') + '. Salvar assim mesmo?', 'Salvar') : Promise.resolve(true);
   passo.then(function (s1) {
     if (!s1) return false;
     if (ant && !f.salvo) {
