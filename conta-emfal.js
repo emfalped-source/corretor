@@ -1,10 +1,10 @@
 /* Conta EMFAL — cadastro de professores e troca de senha em qualquer app da EMFAL.
- * Fica hospedado em https://emfalpbh.github.io/corretor/conta-emfal.js
+ * Fica hospedado em https://emfalped-source.github.io/corretor/conta-emfal.js
  * e conversa direto com o servidor de usuários (Apps Script do Corretor EMFAL),
  * que guarda a lista única de usuários, senhas e turmas de cada professor.
  *
  * Uso em qualquer app:
- *   <script src="https://emfalpbh.github.io/corretor/conta-emfal.js"></script>
+ *   <script src="https://emfalped-source.github.io/corretor/conta-emfal.js"></script>
  *   ContaEMFAL.abrir({ usuario: 'maria.silva' });                 // painel "Minha conta"
  *   ContaEMFAL.abrir({ usuario: u, senha: s, obrigatoria: true }); // logo após login com senha provisória
  *   ContaEMFAL.botao(elemento);                                     // acrescenta o botão "Conta" num cabeçalho
