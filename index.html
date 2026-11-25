@@ -98,7 +98,7 @@ body.semnav main{padding-bottom:24px}
 <!-- tema-emfal: mesmas cores do Super App EMFAL (azul-petróleo, terracota e areia), sempre claro -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="https://emfalped-source.github.io/emfal/tema.css">
+<link rel="stylesheet" href="https://emfalpbh.github.io/emfal/tema.css">
 <style id="tema-emfal">
 :root,:root[data-theme],:root:not([data-theme]){color-scheme:light!important;--verde:var(--emfal-primaria,#1F5C6B)!important;--verde2:var(--emfal-primaria-esc,#164550)!important;--claro:var(--emfal-primaria-cl,#E3EFF1)!important;--fundo:var(--emfal-fundo,#F5F1E8)!important;--card:var(--emfal-cartao,#FFFFFF)!important;--txt:var(--emfal-tinta,#16202E)!important;--sub:var(--emfal-suave,#4A5565)!important;--linha:var(--emfal-borda,#D5DBE3)!important;--ok:var(--emfal-ok,#1B7F4B)!important;--okf:var(--emfal-ok-cl,#E3F4EA)!important;--err:var(--emfal-erro,#B42318)!important;--errf:var(--emfal-erro-cl,#FDE8E6)!important;--al:var(--emfal-alerta,#B45309)!important;--alf:var(--emfal-alerta-cl,#FDF1E2)!important;--barra:var(--emfal-primaria,#1F5C6B)!important;--sobre:var(--emfal-sobre-primaria,#FFFFFF)!important;--th:#D9D9D9!important;--veu:var(--emfal-fundo-veu,rgba(245,241,232,.85))!important;}
 html,body{font-family:var(--emfal-fonte,Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif)!important}
@@ -890,7 +890,7 @@ function mostrarSenhasLote(res) {
   };
   m.querySelector('#lsImprimir').onclick = function () {
     var w = window.open('', '_blank'); if (!w) return aviso('Libere as janelas pop-up para imprimir.');
-    w.document.write('<title>Contas Corretor EMFAL</title><style>body{font-family:Arial;font-size:13px}td,th{border:1px solid #999;padding:6px 8px;text-align:left}table{border-collapse:collapse}</style><h3>Contas criadas no Corretor EMFAL</h3><p>Endereço: https://emfalped-source.github.io/corretor/</p><table><tr><th>Nome</th><th>Usuário</th><th>Senha provisória</th></tr>' +
+    w.document.write('<title>Contas Corretor EMFAL</title><style>body{font-family:Arial;font-size:13px}td,th{border:1px solid #999;padding:6px 8px;text-align:left}table{border-collapse:collapse}</style><h3>Contas criadas no Corretor EMFAL</h3><p>Endereço: https://emfalpbh.github.io/corretor/</p><table><tr><th>Nome</th><th>Usuário</th><th>Senha provisória</th></tr>' +
       res.criados.map(function (c) { return '<tr><td>' + esc(c.nome) + '</td><td>' + esc(c.usuario) + '</td><td>' + esc(c.senha) + '</td></tr>'; }).join('') + '</table>');
     w.document.close(); w.print();
   };
