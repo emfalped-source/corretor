@@ -98,9 +98,10 @@ body.semnav main{padding-bottom:24px}
 <!-- tema-emfal: mesmas cores do Super App EMFAL (azul-petróleo, terracota e areia), sempre claro -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://emfalped-source.github.io/emfal/tema.css">
 <style id="tema-emfal">
-:root,:root[data-theme],:root:not([data-theme]){color-scheme:light!important;--verde:#1F5C6B!important;--verde2:#164550!important;--claro:#E3EFF1!important;--fundo:#F5F1E8!important;--card:#FFFFFF!important;--txt:#16202E!important;--sub:#4A5565!important;--linha:#D5DBE3!important;--ok:#1B7F4B!important;--okf:#E3F4EA!important;--err:#B42318!important;--errf:#FDE8E6!important;--al:#B45309!important;--alf:#FDF1E2!important;--barra:#1F5C6B!important;--sobre:#FFFFFF!important;--th:#D9D9D9!important;--veu:rgba(245,241,232,.85)!important;}
-html,body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif!important}
+:root,:root[data-theme],:root:not([data-theme]){color-scheme:light!important;--verde:var(--emfal-primaria,#1F5C6B)!important;--verde2:var(--emfal-primaria-esc,#164550)!important;--claro:var(--emfal-primaria-cl,#E3EFF1)!important;--fundo:var(--emfal-fundo,#F5F1E8)!important;--card:var(--emfal-cartao,#FFFFFF)!important;--txt:var(--emfal-tinta,#16202E)!important;--sub:var(--emfal-suave,#4A5565)!important;--linha:var(--emfal-borda,#D5DBE3)!important;--ok:var(--emfal-ok,#1B7F4B)!important;--okf:var(--emfal-ok-cl,#E3F4EA)!important;--err:var(--emfal-erro,#B42318)!important;--errf:var(--emfal-erro-cl,#FDE8E6)!important;--al:var(--emfal-alerta,#B45309)!important;--alf:var(--emfal-alerta-cl,#FDF1E2)!important;--barra:var(--emfal-primaria,#1F5C6B)!important;--sobre:var(--emfal-sobre-primaria,#FFFFFF)!important;--th:#D9D9D9!important;--veu:var(--emfal-fundo-veu,rgba(245,241,232,.85))!important;}
+html,body{font-family:var(--emfal-fonte,Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif)!important}
 </style>
 </head>
 <body>
